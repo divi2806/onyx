@@ -55,7 +55,7 @@ export default function InvoicePage() {
     setCreating(true);
     try {
       const baseUrl =
-        typeof window !== "undefined" ? window.location.origin : "https://useonyx.xyz";
+        typeof window !== "undefined" ? window.location.origin : "https://onyx-red.vercel.app/";
       const inv = createInvoice(
         solanaConfig.cluster,
         wallet,
@@ -197,7 +197,7 @@ export default function InvoicePage() {
           )}
 
           {lastInvoice && (
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               className="flex flex-col gap-3 rounded-[1.5rem] border border-primary/40 bg-primary/10 p-5 shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)] backdrop-blur-md mt-2"

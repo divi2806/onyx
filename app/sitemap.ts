@@ -2,7 +2,7 @@ import fs from "fs";
 import type { MetadataRoute } from "next";
 import path from "path";
 
-const URL = "https://useonyx.xyz";
+const URL = "https://onyx-red.vercel.app/";
 const baseDir = "app";
 const dynamicDirs = [""];
 const excludeDirs = [""];

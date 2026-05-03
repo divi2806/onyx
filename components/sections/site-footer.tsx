@@ -123,13 +123,13 @@ export function SiteFooter() {
           </p>
           <div className="flex items-center gap-5 text-[13px] text-muted-foreground">
             <Link
-              href="https://x.com/UseOnyx"
+              href=""
               className="transition-colors hover:text-primary"
             >
               X
             </Link>
             <Link
-              href="https://github.com/UseOnyx"
+              href="https://github.com/divi2806/onyx"
               className="transition-colors hover:text-primary"
             >
               GitHub
@@ -141,7 +141,7 @@ export function SiteFooter() {
               Docs
             </Link>
             <span className="font-mono text-[11px] text-muted-foreground">
-              v0.1 · mainnet
+              v0.1 · devnet
             </span>
           </div>
         </div>

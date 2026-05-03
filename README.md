@@ -4,8 +4,7 @@
 
 Onyx makes it possible to pay contributors, vendors, and contractors on Solana without publishing amounts, recipients, or schedules on the public ledger — while keeping full audit-ready records for the people you choose.
 
-- **Website:** [useonyx.xyz](https://useonyx.xyz)
-- **X:** [@UseOnyx](https://x.com/UseOnyx)
+- **Website:** [Onyx](https://onyx-red.vercel.app/)
 
 ---
 

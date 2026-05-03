@@ -5,12 +5,12 @@ const { title, titleLong, description, ogImage, baseURL, socials } = {
   titleLong: "Onyx | Confidential payment infrastructure for Solana",
   description:
     "Confidential payment infrastructure for onchain teams. Move SOL, USDC, and USDT through a ZK shielded pool — amounts stay off the public ledger, compliance stays audit-ready.",
-  baseURL: "https://useonyx.xyz",
-  ogImage: "https://useonyx.xyz/open-graph.png",
+  baseURL: "https://onyx-red.vercel.app/",
+  ogImage: "https://onyx-red.vercel.app/open-graph.png",
   socials: {
-    xHandle: "UseOnyx",
-    xUrl: "https://x.com/UseOnyx",
-    githubOrg: "UseOnyx",
+    xHandle: "Onyx",
+    xUrl: "",
+    githubOrg: "divi2806",
   },
 };
 
@@ -46,7 +46,7 @@ export const siteConfig: Metadata = {
   },
   keywords: [
     "Onyx",
-    "UseOnyx",
+    "useOnyx",
     "Solana",
     "confidential payments",
     "private payroll",
