@@ -14,7 +14,6 @@ import { PublicKey } from "@solana/web3.js";
 import { AnimatePresence, motion } from "motion/react";
 import * as React from "react";
 
-import { PageHeader } from "@/components/app-shell/page-header";
 import { SolanaLogo, UsdcLogo, UsdtLogo } from "@/components/logos";
 import { FancyButton } from "@/components/ui/fancy-button";
 import { Input } from "@/components/ui/input";
@@ -176,14 +175,24 @@ export default function PayPage() {
     ) : undefined;
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Private transfer"
-        title="Send"
-        description="Pay any Solana wallet through the Cloak shield pool. A Groth16 proof generated in your browser means the on-chain record shows nothing — no amount, no sender, no recipient."
-      />
+    <div className="mx-auto w-full max-w-screen-xl px-5 relative">
+      {/* Background radial glow */}
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,rgba(var(--primary-rgb),0.12),transparent_70%)]" aria-hidden />
 
-      <div className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-10 sm:px-8 lg:grid-cols-[1.4fr_1fr]">
+      {/* Page title */}
+      <div className="py-12 flex flex-col items-center text-center relative z-10">
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-sm backdrop-blur-md">
+          <span className="size-1.5 rounded-full bg-primary shadow-[0_0_6px_currentColor]" />
+          Zero-Knowledge Execution
+        </span>
+        <h1 className="mt-6 text-[42px] font-black leading-[1.05] tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-br from-white to-white/40 sm:text-[54px]">
+          Transfer Anonymously
+        </h1>
+      </div>
+
+      <div className="mx-auto grid max-w-[64rem] gap-6 pb-24 lg:grid-cols-[1.2fr_1fr] lg:items-start relative z-10">
+        {/* Main column */}
+        <div className="relative flex flex-col overflow-hidden rounded-[2rem] border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-transparent p-8 shadow-2xl backdrop-blur-2xl">
         {fastSend.status === "success" && lastSend ? (
           <SuccessCard
             net={lastSend.net}
@@ -205,7 +214,7 @@ export default function PayPage() {
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col gap-6 rounded-2xl border border-border bg-card/60 p-6 sm:p-8"
+          className="flex flex-col gap-7"
           onSubmit={async (e) => {
             e.preventDefault();
             setAmountTouched(true);
@@ -253,8 +262,8 @@ export default function PayPage() {
           }}
           noValidate
         >
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="recipient">Recipient address</Label>
+          <div className="flex flex-col gap-2.5">
+            <Label htmlFor="recipient" className="text-white/60 ml-1">Recipient address</Label>
             <Input
               id="recipient"
               placeholder="Solana wallet address"
@@ -268,19 +277,19 @@ export default function PayPage() {
               aria-describedby={
                 showAddressError ? "recipient-error" : "recipient-hint"
               }
-              className="font-mono text-[13px]"
+              className="font-mono text-[14px] bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner"
               trailingIcon={
                 addressValid ? (
                   <HugeiconsIcon
                     icon={CheckmarkCircle01Icon}
-                    size={14}
+                    size={16}
                     strokeWidth={2}
-                    className="text-primary"
+                    className="text-primary drop-shadow-[0_0_6px_currentColor]"
                   />
                 ) : showAddressError ? (
                   <HugeiconsIcon
                     icon={Alert02Icon}
-                    size={14}
+                    size={16}
                     strokeWidth={2}
                     className="text-destructive"
                   />
@@ -294,9 +303,9 @@ export default function PayPage() {
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="amount">Amount</Label>
-            <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="flex flex-col gap-2.5">
+            <Label htmlFor="amount" className="text-white/60 ml-1">Amount</Label>
+            <div className="flex flex-col gap-3 sm:flex-row">
               <Input
                 id="amount"
                 inputMode="decimal"
@@ -307,26 +316,26 @@ export default function PayPage() {
                 invalid={showAmountError}
                 aria-invalid={showAmountError || undefined}
                 aria-describedby={showAmountError ? "amount-error" : undefined}
-                className="font-mono sm:flex-1"
+                className="font-mono sm:flex-1 text-[16px] bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner"
                 trailingIcon={
                   amountValid ? (
                     <HugeiconsIcon
                       icon={CheckmarkCircle01Icon}
-                      size={14}
+                      size={16}
                       strokeWidth={2}
-                      className="text-primary"
+                      className="text-primary drop-shadow-[0_0_6px_currentColor]"
                     />
                   ) : showAmountError ? (
                     <HugeiconsIcon
                       icon={Alert02Icon}
-                      size={14}
+                      size={16}
                       strokeWidth={2}
                       className="text-destructive"
                     />
                   ) : undefined
                 }
               />
-              <div className="flex items-center gap-1.5 rounded-xl border border-border bg-background/50 p-1">
+              <div className="flex items-center gap-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-1.5 shadow-inner">
                 {TOKENS.map((t) => {
                   const isActive = token === t.id;
                   return (
@@ -335,26 +344,26 @@ export default function PayPage() {
                       type="button"
                       onClick={() => setToken(t.id)}
                       className={cn(
-                        "relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors",
+                        "relative flex h-full items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition-colors",
                         isActive
-                          ? "text-foreground"
-                          : "text-muted-foreground hover:text-foreground",
+                          ? "text-white drop-shadow-md"
+                          : "text-white/40 hover:text-white/80",
                       )}
                     >
                       {isActive && (
                         <motion.span
                           layoutId="pay-token-active"
                           aria-hidden="true"
-                          className="absolute inset-0 -z-0 rounded-lg bg-secondary"
+                          className="absolute inset-0 -z-0 rounded-xl bg-white/[0.08] border border-white/[0.1] shadow-sm backdrop-blur-md"
                           transition={{
                             type: "spring",
-                            stiffness: 380,
+                            stiffness: 400,
                             damping: 30,
                           }}
                         />
                       )}
                       <span className="relative z-10 flex items-center gap-1.5">
-                        <t.Logo className="size-3.5" />
+                        <t.Logo className="size-4 drop-shadow-sm" />
                         {t.label}
                       </span>
                     </button>
@@ -369,31 +378,35 @@ export default function PayPage() {
             />
           </div>
 
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="memo" hint="Optional, encrypted">
+          <div className="flex flex-col gap-2.5">
+            <Label htmlFor="memo" hint="Optional, encrypted" className="text-white/60 ml-1">
               Memo
             </Label>
-            <Input id="memo" placeholder="e.g. invoice #2026-04" />
+            <Input 
+              id="memo" 
+              placeholder="e.g. invoice #2026-04" 
+              className="bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner text-[14px]"
+            />
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-4 pt-4">
             <FancyButton
               type="submit"
               variant="primary"
               size="lg"
-              className="self-start"
               disabled={!canSubmit}
+              className="h-14 rounded-2xl text-[15px] shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.5)] transition-shadow"
             >
               {submitButtonLabel(fastSend.status, wallet.connected)}
               <HugeiconsIcon
                 icon={ArrowRight01Icon}
-                size={14}
+                size={16}
                 strokeWidth={2.2}
               />
             </FancyButton>
 
             {!tokenSupported && (
-              <p className="text-[12px] text-muted-foreground">
+              <p className="text-[12px] text-destructive">
                 {token} is not available on {solanaConfig.cluster}.
               </p>
             )}
@@ -412,75 +425,73 @@ export default function PayPage() {
           </div>
         </motion.form>
         )}
+        </div>
 
-        <motion.aside
-          initial={{ opacity: 0, y: 8 }}
+        {/* Right panel — summary + privacy notes */}
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col gap-4"
+          transition={{ duration: 0.3, delay: 0.08 }}
+          className="flex flex-col gap-6 lg:sticky lg:top-24"
         >
-          <div className="rounded-2xl border border-border bg-card/60 p-6">
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          {/* Summary */}
+          <div className="rounded-[1.5rem] border border-white/[0.06] bg-gradient-to-br from-white/[0.02] to-transparent p-6 shadow-xl backdrop-blur-xl">
+            <p className="mb-5 text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
               Summary
             </p>
-
-            <dl className="mt-4 flex flex-col divide-y divide-border text-[13.5px]">
-              <Row
-                label="You send"
-                value={`${formatAmount(numericAmount)} ${token}`}
-              />
-              <Row
-                label="Variable fee"
-                value={`${formatAmount(variableFee)} ${token}`}
-                hint="0.30%"
-              />
-              <Row label="Network fee" value="0.005 SOL" />
-              <Row
-                label="Recipient gets"
-                value={`${formatAmount(recipientReceives)} ${token}`}
-                emphasis
-                accent
-              />
+            <dl className="flex flex-col gap-4 text-[13.5px]">
+              <div className="flex items-center justify-between">
+                <dt className="text-white/50 font-medium">You send</dt>
+                <dd className="font-mono font-bold text-white">
+                  {numericAmount > 0 ? `${formatAmount(numericAmount)} ${token}` : "—"}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-white/50 font-medium">Variable fee <span className="text-[11px] opacity-40">0.30%</span></dt>
+                <dd className="font-mono text-white/60">
+                  {numericAmount > 0 ? `${formatAmount(variableFee)} ${token}` : "—"}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between">
+                <dt className="text-white/50 font-medium">Network fee</dt>
+                <dd className="font-mono text-white/60">0.005 SOL</dd>
+              </div>
+              <div className="h-px bg-white/[0.06] my-1" />
+              <div className="flex items-center justify-between">
+                <dt className="font-bold text-white/80">Recipient gets</dt>
+                <dd className="font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/60 text-[15px]">
+                  {recipientReceives > 0 ? `${formatAmount(recipientReceives)} ${token}` : "—"}
+                </dd>
+              </div>
             </dl>
-            {token !== "SOL" && (
-              <p className="mt-3 text-[11.5px] text-muted-foreground">
-                Network fee is paid separately from your SOL balance.
+            {token !== "SOL" && numericAmount > 0 && (
+              <p className="mt-4 text-[11px] text-white/30 font-medium">
+                Network fee paid from your SOL balance.
               </p>
             )}
           </div>
 
-          <ul className="flex flex-col gap-2 rounded-2xl border border-border bg-card/40 p-5">
-            {[
-              { icon: LockIcon, text: "Proof generated locally in your browser." },
-              {
-                icon: CheckmarkCircle01Icon,
-                text: "Verified on-chain by the Cloak shield-pool program.",
-              },
-              {
-                icon: Coins01Icon,
-                text: "Settles in a single Solana transaction.",
-              },
-            ].map((it, i) => (
-              <motion.li
-                key={it.text}
-                initial={{ opacity: 0, x: -6 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.16 + i * 0.05, duration: 0.25 }}
-                className="flex items-start gap-2.5 text-[12.5px] leading-5 text-muted-foreground"
-              >
-                <HugeiconsIcon
-                  icon={it.icon}
-                  size={14}
-                  strokeWidth={1.8}
-                  className="mt-0.5 text-primary"
-                />
-                <span>{it.text}</span>
-              </motion.li>
-            ))}
-          </ul>
-        </motion.aside>
+          {/* Privacy guarantees */}
+          <div className="rounded-[1.5rem] border border-white/[0.06] bg-gradient-to-br from-white/[0.02] to-transparent p-6 shadow-xl backdrop-blur-xl">
+            <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
+              Privacy
+            </p>
+            <ul className="flex flex-col gap-4">
+              {[
+                { icon: LockIcon, text: "Zero-knowledge proofs are computed client-side, ensuring your data never leaves your device." },
+                { icon: CheckmarkCircle01Icon, text: "Transactions are validated by the Onyx protocol with complete anonymity." },
+                { icon: Coins01Icon, text: "Instantaneous settlement powered by the Solana network." },
+              ].map((it) => (
+                <li key={it.text} className="flex items-start gap-3 text-[13px] leading-relaxed text-white/50 font-medium">
+                  <HugeiconsIcon icon={it.icon} size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-primary drop-shadow-[0_0_4px_rgba(var(--primary-rgb),0.5)]" />
+                  {it.text}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </motion.div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -547,7 +558,7 @@ function SuccessCard({
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col gap-6 rounded-2xl border border-border bg-card/60 p-6 sm:p-8"
+      className="flex flex-col gap-6 rounded-xl border border-border/60 bg-card/40 p-6 sm:p-8"
     >
       <div className="flex items-start gap-3">
         <motion.span

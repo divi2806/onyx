@@ -19,7 +19,6 @@ import * as React from "react";
 
 import { useWallet } from "@solana/wallet-adapter-react";
 
-import { PageHeader } from "@/components/app-shell/page-header";
 import { SolanaLogo, UsdcLogo, UsdtLogo } from "@/components/logos";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -183,14 +182,21 @@ export default function HistoryPage() {
   const showPagination = filteredGroups.length > PAGE_SIZE;
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Private ledger"
-        title="Ledger"
-        description="A complete record of every payment you've routed through Onyx. Stored locally and verifiable on-chain — visible only to you."
-      />
+    <div className="mx-auto w-full max-w-screen-xl px-5">
+      <div className="py-8">
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary/22 bg-primary/8 px-3 py-1 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-primary/75">
+          <span className="size-1.5 rounded-full bg-primary/70" />
+          Private ledger
+        </span>
+        <div className="mt-3 flex items-center justify-between gap-4">
+          <h1 className="text-[26px] font-bold tracking-[-0.03em] text-foreground sm:text-[32px]">
+            Ledger
+          </h1>
+        </div>
+        <div className="mt-4 h-px bg-gradient-to-r from-primary/40 via-border/50 to-transparent" />
+      </div>
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 px-4 py-6 sm:px-8">
+      <div className="flex flex-col gap-4 pb-16">
         <BalanceSummary summaries={tokenSummaries} />
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -322,7 +328,7 @@ export default function HistoryPage() {
           />
         )}
       </div>
-    </>
+    </div>
   );
 }
 

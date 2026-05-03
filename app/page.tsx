@@ -1,68 +1,31 @@
 import {
   ArrowRight01Icon,
   CheckmarkCircle01Icon,
+  Key01Icon,
   MailSend01Icon,
   Plug01Icon,
   Upload01Icon,
-  Key01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import Link from "next/link";
 
 import { Hero } from "@/components/sections/hero";
 import { IntegrationsBento } from "@/components/sections/integrations-bento";
-import { SiteFooter } from "@/components/sections/site-footer";
 import { fancyButtonVariants } from "@/components/ui/fancy-button";
 
 export default function Home() {
   return (
     <div className="dark relative isolate flex min-h-screen flex-col bg-background text-foreground">
       <Hero />
-      <TrustStrip />
       <IntegrationsBento />
       <HowItWorks />
       <FinalCta />
-      <SiteFooter />
     </div>
   );
 }
 
-function TrustStrip() {
-  const stats: { label: string; value: string }[] = [
-    { label: "ZK proof time", value: "~3s" },
-    { label: "Merkle tree height", value: "32" },
-    { label: "Public signals", value: "9" },
-    { label: "Fixed fee per transfer", value: "0.005 SOL" },
-    { label: "Variable fee", value: "0.30%" },
-  ];
-  return (
-    <section className="relative border-y border-border bg-background">
-      <div className="mx-auto grid w-full max-w-6xl grid-cols-2 px-6 sm:grid-cols-5 sm:px-8">
-        {stats.map((s) => (
-          <div
-            key={s.label}
-            className="flex flex-col items-start gap-1 px-2 py-6 sm:px-4"
-          >
-            <span className="font-mono text-[20px] tracking-tight text-primary">
-              {s.value}
-            </span>
-            <span className="text-[11.5px] uppercase tracking-[0.14em] text-muted-foreground">
-              {s.label}
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
 function HowItWorks() {
-  const steps: {
-    n: string;
-    title: string;
-    body: string;
-    icon: typeof Plug01Icon;
-  }[] = [
+  const steps = [
     {
       n: "01",
       title: "Link your treasury wallet",
@@ -77,90 +40,79 @@ function HowItWorks() {
     },
     {
       n: "03",
-      title: "Execute the batch privately",
+      title: "Execute privately",
       icon: MailSend01Icon,
-      body: "Each payment generates a Groth16 proof in your browser. The relay settles on Solana. The chain sees a transaction — your amounts stay sealed.",
+      body: "Each payment generates a Groth16 proof in your browser. The relay settles on Solana — no amounts, no counterparties on-chain.",
     },
     {
       n: "04",
-      title: "Disclose selectively when asked",
+      title: "Disclose selectively",
       icon: Key01Icon,
       body: "Issue a scoped viewing key to your auditor for a specific date range. They get a structured report. The public ledger sees nothing.",
     },
   ];
 
   return (
-    <section
-      id="how"
-      className="relative mx-auto w-full max-w-6xl px-6 py-24 sm:px-8"
-    >
-      <div className="grid gap-16 lg:grid-cols-[1fr_1.4fr] lg:gap-24">
-        {/* Left: sticky header */}
-        <div className="lg:sticky lg:top-24 lg:self-start">
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-primary/80">
-            How it works
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
-            Private from the first transaction.
-          </h2>
-          <p className="mt-4 text-[14.5px] leading-7 text-muted-foreground">
-            No infrastructure to run. No circuits to compile. Connect your wallet and start moving money privately in minutes.
-          </p>
-          <div className="mt-8 flex flex-col gap-3">
-            {[
-              "Works with wallets you already use",
-              "Proofs run fully in your browser",
-              "Auditor access revocable at any time",
-            ].map((item) => (
-              <div key={item} className="flex items-center gap-2.5 text-[13.5px] text-foreground/80">
-                <HugeiconsIcon
-                  icon={CheckmarkCircle01Icon}
-                  size={15}
-                  strokeWidth={1.8}
-                  className="shrink-0 text-primary"
-                />
-                {item}
-              </div>
-            ))}
-          </div>
-        </div>
+    <section id="how" className="relative mx-auto w-full max-w-[85rem] px-6 py-32 sm:px-10 lg:px-12">
+      <div className="mb-16">
+        <p className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-sm backdrop-blur-md">
+          <span className="size-1.5 rounded-full bg-primary shadow-[0_0_6px_currentColor]" />
+          How it works
+        </p>
+        <h2 className="mt-6 max-w-lg text-[42px] font-black leading-[1.05] tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-br from-white to-white/40 sm:text-[54px]">
+          Private from the
+          <br />
+          <span className="text-white/20">first transaction.</span>
+        </h2>
+      </div>
 
-        {/* Right: vertical timeline */}
-        <div className="flex flex-col">
-          {steps.map((s, i) => (
-            <div key={s.n} className="flex gap-5">
-              {/* Step indicator + connector line */}
-              <div className="flex flex-col items-center">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/30 bg-primary/10">
-                  <HugeiconsIcon
-                    icon={s.icon}
-                    size={16}
-                    strokeWidth={1.8}
-                    className="text-primary"
-                  />
-                </div>
-                {i < steps.length - 1 && (
-                  <div className="mt-2 w-px flex-1 bg-gradient-to-b from-border to-transparent" />
-                )}
+      {/* Grid of bento cards */}
+      <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        {steps.map((s, i) => (
+          <div
+            key={s.n}
+            className="group relative flex h-full flex-col overflow-hidden rounded-[1.5rem] border border-white/[0.08] bg-gradient-to-br from-white/[0.03] to-transparent p-6 shadow-xl backdrop-blur-lg transition-all duration-500 hover:-translate-y-2 hover:shadow-2xl hover:shadow-primary/5"
+          >
+            {/* Hover glow overlay */}
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 group-hover:opacity-100 bg-[radial-gradient(ellipse_80%_80%_at_50%_0%,rgba(255,255,255,0.04),transparent)]"
+            />
+            
+            {/* Step circle */}
+            <div className="relative mb-8 flex items-start justify-between">
+              <div className="grid size-12 shrink-0 place-items-center rounded-2xl border border-white/[0.1] bg-gradient-to-br from-white/[0.08] to-white/[0.02] shadow-sm backdrop-blur-md transition-colors duration-500 group-hover:border-primary/30 group-hover:bg-primary/[0.1]">
+                <HugeiconsIcon icon={s.icon} size={20} strokeWidth={1.8} className="text-white/50 transition-colors duration-500 group-hover:text-primary drop-shadow-sm" />
               </div>
-
-              {/* Content */}
-              <div className={i < steps.length - 1 ? "pb-10" : ""}>
-                <div className="flex items-center gap-2.5 pt-1.5">
-                  <span className="font-mono text-[10.5px] tracking-[0.18em] text-muted-foreground/60">
-                    {s.n}
-                  </span>
-                  <h3 className="text-[15.5px] font-semibold tracking-tight text-foreground">
-                    {s.title}
-                  </h3>
-                </div>
-                <p className="mt-2 text-[14px] leading-6 text-muted-foreground">
-                  {s.body}
-                </p>
-              </div>
+              <span className="font-mono text-4xl font-black text-white/5 transition-colors duration-500 group-hover:text-white/10 select-none">
+                {s.n}
+              </span>
             </div>
-          ))}
-        </div>
+
+            <div className="mt-auto flex flex-col gap-3">
+              <h3 className="text-lg font-bold leading-snug tracking-tight text-transparent bg-clip-text bg-gradient-to-br from-white/90 to-white/50 transition-all duration-300 group-hover:from-white group-hover:to-white/70">
+                {s.title}
+              </h3>
+              <p className="text-[13.5px] leading-relaxed text-white/40 font-medium">
+                {s.body}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Bottom checks */}
+      <div className="mt-16 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 rounded-3xl border border-white/[0.05] bg-white/[0.01] py-6 px-8 backdrop-blur-md">
+        {[
+          "Works with wallets you already use",
+          "Proofs run fully in your browser",
+          "Auditor access revocable at any time",
+        ].map((item) => (
+          <div key={item} className="flex items-center gap-2.5 text-[13px] font-semibold text-white/50">
+            <HugeiconsIcon icon={CheckmarkCircle01Icon} size={16} strokeWidth={2} className="shrink-0 text-primary drop-shadow-[0_0_6px_oklch(0.68_0.24_285/0.8)]" />
+            {item}
+          </div>
+        ))}
       </div>
     </section>
   );
@@ -176,43 +128,44 @@ function FinalCta() {
   ];
 
   return (
-    <section className="relative mx-auto w-full max-w-6xl px-6 pb-24 sm:px-8">
-      <div className="overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/8 via-transparent to-transparent px-8 py-14 sm:px-14">
-        <div className="grid gap-10 sm:grid-cols-[1.3fr_1fr] sm:items-start">
+    <section className="relative mx-auto w-full max-w-7xl px-6 pb-28 sm:px-10">
+      <div className="relative overflow-hidden rounded-3xl border border-primary/20 bg-gradient-to-br from-primary/10 via-card/60 to-card/30 px-8 py-16 sm:px-14">
+        {/* Background radial glow */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-20 left-1/4 h-64 w-64 rounded-full bg-primary/15 blur-3xl"
+        />
+        <div className="relative grid gap-12 sm:grid-cols-[1.2fr_1fr] sm:items-start">
           <div>
-            <h2 className="max-w-xl text-3xl font-semibold leading-tight tracking-tight text-foreground sm:text-4xl">
+            <h2 className="max-w-xl text-[32px] font-black leading-[1.06] tracking-[-0.03em] text-foreground sm:text-[40px]">
               Stop running payroll on a public database.
             </h2>
             <p className="mt-4 max-w-md text-[14.5px] leading-7 text-muted-foreground">
               Onyx is live on Solana mainnet. Connect your treasury wallet and run your first private disbursement in under two minutes.
             </p>
-            <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="mt-8 flex items-center gap-3">
               <Link
                 href="/payroll"
                 className={fancyButtonVariants({ variant: "primary", size: "lg" })}
               >
                 Launch app
-                <HugeiconsIcon
-                  icon={ArrowRight01Icon}
-                  size={15}
-                  strokeWidth={2.2}
-                />
+                <HugeiconsIcon icon={ArrowRight01Icon} size={15} strokeWidth={2.2} />
               </Link>
             </div>
-            <p className="mt-4 font-mono text-[11.5px] text-muted-foreground">
+            <p className="mt-4 font-mono text-[11.5px] text-muted-foreground/60">
               zh1eLd6r…6qRkW · mainnet · audited Q1 2026
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card/40 p-5">
-            <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          <div className="flex flex-col gap-3 rounded-2xl border border-border/50 bg-background/40 p-5">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-muted-foreground/60">
               What you get
             </p>
             {checks.map((c) => (
-              <div key={c} className="flex items-start gap-2.5 text-[13.5px] text-foreground/85">
+              <div key={c} className="flex items-start gap-2.5 text-[13px] text-foreground/80">
                 <HugeiconsIcon
                   icon={CheckmarkCircle01Icon}
-                  size={15}
+                  size={14}
                   strokeWidth={1.8}
                   className="mt-0.5 shrink-0 text-primary"
                 />

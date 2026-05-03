@@ -10,18 +10,18 @@ const STYLES: Record<
   "mainnet-beta": null,
   devnet: {
     label: "Devnet",
-    dot: "bg-amber-500",
-    chip: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300",
+    dot: "bg-primary",
+    chip: "border-primary/25 bg-primary/10 text-primary/80",
   },
   testnet: {
     label: "Testnet",
-    dot: "bg-sky-500",
-    chip: "border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300",
+    dot: "bg-sky-400",
+    chip: "border-sky-400/25 bg-sky-400/10 text-sky-400/80",
   },
   localnet: {
     label: "Localnet",
-    dot: "bg-violet-500",
-    chip: "border-violet-500/30 bg-violet-500/10 text-violet-700 dark:text-violet-300",
+    dot: "bg-violet-400",
+    chip: "border-violet-400/25 bg-violet-400/10 text-violet-400/80",
   },
 };
 
@@ -32,8 +32,8 @@ export function ClusterBadge({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5",
-        "text-[11px] font-medium tracking-tight",
+        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1",
+        "text-[10.5px] font-semibold tracking-wide uppercase",
         style.chip,
         className,
       )}
@@ -42,7 +42,7 @@ export function ClusterBadge({ className }: { className?: string }) {
     >
       <span
         aria-hidden="true"
-        className={cn("size-1.5 rounded-full", style.dot)}
+        className={cn("size-1.5 rounded-full animate-pulse", style.dot)}
       />
       {style.label}
     </span>

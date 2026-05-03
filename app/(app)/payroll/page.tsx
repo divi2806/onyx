@@ -15,7 +15,6 @@ import * as React from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import Link from "next/link";
 
-import { PageHeader } from "@/components/app-shell/page-header";
 import { SolanaLogo, UsdcLogo, UsdtLogo } from "@/components/logos";
 import { DueBanner } from "@/components/team/due-banner";
 import { DueRunDialog } from "@/components/team/due-run-dialog";
@@ -96,14 +95,22 @@ export default function PayrollPage() {
   const showDropzone = parse.kind === "idle" || parse.kind === "error";
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Batch disbursement"
-        title="Payroll"
-        description="Upload a CSV of recipients and amounts. Onyx routes every payment through the shield pool — no on-chain salary data, no exposure, one signature."
-      />
+    <div className="mx-auto w-full max-w-screen-xl px-5 relative">
+      {/* Background radial glow */}
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,rgba(var(--primary-rgb),0.12),transparent_70%)]" aria-hidden />
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-10 sm:px-8">
+      {/* Page title */}
+      <div className="py-12 flex flex-col items-center text-center relative z-10">
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-sm backdrop-blur-md">
+          <span className="size-1.5 rounded-full bg-primary shadow-[0_0_6px_currentColor]" />
+          Mass Distribution
+        </span>
+        <h1 className="mt-6 text-[42px] font-black leading-[1.05] tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-br from-white to-white/40 sm:text-[54px]">
+          Batch Payments
+        </h1>
+      </div>
+
+      <div className="flex flex-col gap-8 pb-16 mx-auto max-w-[56rem] relative z-10">
         <DueBanner
           total={due.total}
           groups={due.groups}
@@ -135,9 +142,9 @@ export default function PayrollPage() {
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
               className={cn(
-                "group relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-dashed border-border bg-card/40 px-8 py-14 text-center transition-colors",
-                "hover:border-primary/40 hover:bg-card/60",
-                drag && "border-primary/60 bg-primary/5",
+                "group relative flex cursor-pointer flex-col items-center justify-center gap-5 overflow-hidden rounded-[2rem] border-2 border-dashed bg-gradient-to-br from-white/[0.04] to-transparent px-8 py-24 text-center transition-all duration-500 backdrop-blur-xl shadow-2xl",
+                "border-white/[0.1] hover:border-primary/40 hover:bg-white/[0.06] hover:shadow-[0_0_40px_rgba(var(--primary-rgb),0.1)]",
+                drag && "border-primary/60 bg-primary/10 shadow-[0_0_50px_rgba(var(--primary-rgb),0.2)]",
               )}
             >
               <input
@@ -162,31 +169,31 @@ export default function PayrollPage() {
                   stiffness: 320,
                   damping: 22,
                 }}
-                className="grid size-12 place-items-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"
+                className="grid size-16 place-items-center rounded-2xl border border-primary/30 bg-primary/20 text-primary shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] group-hover:scale-110 transition-transform duration-500"
               >
-                <HugeiconsIcon icon={Upload01Icon} size={20} strokeWidth={1.6} />
+                <HugeiconsIcon icon={Upload01Icon} size={24} strokeWidth={2} />
               </motion.div>
 
-              <div className="flex flex-col gap-1">
-                <p className="text-[15px] font-medium text-foreground">
+              <div className="flex flex-col gap-2">
+                <p className="text-[20px] font-bold text-white group-hover:text-primary transition-colors duration-300">
                   Drop your roster CSV
                 </p>
-                <p className="text-[13px] text-muted-foreground">
+                <p className="text-[14px] text-white/50 max-w-sm mx-auto leading-relaxed">
                   Columns: wallet, amount. Optional: label. Up to 1,000 rows.
                 </p>
               </div>
 
-              <span className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-border bg-background/60 px-3 py-1 font-mono text-[11px] text-muted-foreground">
-                <HugeiconsIcon icon={Coins01Icon} size={11} strokeWidth={2} />
+              <span className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.05] px-4 py-1.5 font-mono text-[12px] font-bold text-white/60 backdrop-blur-md">
+                <HugeiconsIcon icon={Coins01Icon} size={14} strokeWidth={2} className="text-primary" />
                 SOL · USDC · USDT
               </span>
 
               {parse.kind === "error" && (
-                <div className="mt-3 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-1.5 text-[12px] text-destructive">
+                <div className="mt-4 flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive shadow-sm backdrop-blur-md font-medium">
                   <HugeiconsIcon
                     icon={Alert02Icon}
-                    size={12}
-                    strokeWidth={2.2}
+                    size={16}
+                    strokeWidth={2}
                   />
                   <span>
                     <span className="font-mono">{parse.fileName}</span>:{" "}
@@ -211,7 +218,7 @@ export default function PayrollPage() {
         groups={due.groups}
         onClose={() => setRunOpen(false)}
       />
-    </>
+    </div>
   );
 }
 
@@ -318,11 +325,11 @@ function ParsedSummary({
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -4 }}
       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col gap-5 rounded-2xl border border-border bg-card/60 p-6 sm:p-8"
+      className="flex flex-col gap-6 rounded-[2rem] border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-10 backdrop-blur-xl shadow-2xl"
     >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex min-w-0 flex-col">
-          <p className="text-[11px] font-medium uppercase tracking-[0.16em] text-muted-foreground">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
             Roster
           </p>
           <p className="mt-1 truncate font-mono text-[13.5px] text-foreground">
@@ -362,7 +369,7 @@ function ParsedSummary({
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 rounded-xl border border-border bg-background/40 p-1">
+          <div className="flex items-center gap-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-1.5 shadow-inner">
             {TOKEN_OPTIONS.map((t) => {
               const isActive = tokenId === t.id;
               return (
@@ -371,26 +378,26 @@ function ParsedSummary({
                   type="button"
                   onClick={() => setTokenId(t.id)}
                   className={cn(
-                    "relative flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12px] font-medium transition-colors",
+                    "relative flex h-full items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition-colors",
                     isActive
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
+                      ? "text-white drop-shadow-md"
+                      : "text-white/40 hover:text-white/80",
                   )}
                 >
                   {isActive && (
                     <motion.span
                       layoutId="payroll-token-active"
                       aria-hidden="true"
-                      className="absolute inset-0 -z-0 rounded-lg bg-secondary"
+                      className="absolute inset-0 -z-0 rounded-xl bg-white/[0.08] border border-white/[0.1] shadow-sm backdrop-blur-md"
                       transition={{
                         type: "spring",
-                        stiffness: 380,
+                        stiffness: 400,
                         damping: 30,
                       }}
                     />
                   )}
                   <span className="relative z-10 flex items-center gap-1.5">
-                    <t.Logo className="size-3.5" />
+                    <t.Logo className="size-4 drop-shadow-sm" />
                     {t.label}
                   </span>
                 </button>
@@ -401,9 +408,9 @@ function ParsedSummary({
           <button
             type="button"
             onClick={onReset}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background/60 px-2.5 py-1.5 text-[12px] text-muted-foreground transition-colors hover:border-destructive/40 hover:text-destructive"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-white/50 transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive shadow-sm"
           >
-            <HugeiconsIcon icon={Delete02Icon} size={12} strokeWidth={2} />
+            <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={2} />
             Clear
           </button>
         </div>
@@ -474,11 +481,12 @@ function ParsedSummary({
               size="lg"
               disabled={!canRun}
               onClick={onRun}
+              className="h-14 rounded-2xl text-[15px] shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.5)] transition-shadow px-8"
             >
               {runLabel}
               <HugeiconsIcon
                 icon={ArrowRight01Icon}
-                size={14}
+                size={16}
                 strokeWidth={2.2}
               />
             </FancyButton>

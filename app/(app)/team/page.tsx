@@ -15,7 +15,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { AnimatePresence, motion } from "motion/react";
 import * as React from "react";
 
-import { PageHeader } from "@/components/app-shell/page-header";
 import { SolanaLogo, UsdcLogo, UsdtLogo } from "@/components/logos";
 import { DueBanner } from "@/components/team/due-banner";
 import { DueRunDialog } from "@/components/team/due-run-dialog";
@@ -132,26 +131,22 @@ export default function TeamPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="Recipients & schedules"
-        title="Team"
-        description="Build your private contributor list. Set a payment cadence per person and Onyx will track who's due — so payroll runs on time, not on-chain."
-        actions={
-          members.length > 0 ? (
-            <FancyButton
-              type="button"
-              variant="primary"
-              size="md"
-              onClick={() => setDialog({ kind: "add" })}
-            >
-              <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={2.2} />
-              Add member
-            </FancyButton>
-          ) : undefined
-        }
-      />
+      <div className="mx-auto w-full max-w-screen-xl px-5 relative">
+        {/* Background radial glow */}
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,rgba(var(--primary-rgb),0.12),transparent_70%)]" aria-hidden />
 
-      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-10 sm:px-8">
+        {/* Page title */}
+        <div className="py-12 flex flex-col items-center text-center relative z-10">
+          <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-sm backdrop-blur-md">
+            <span className="size-1.5 rounded-full bg-primary shadow-[0_0_6px_currentColor]" />
+            Network & Beneficiaries
+          </span>
+          <h1 className="mt-6 text-[42px] font-black leading-[1.05] tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-br from-white to-white/40 sm:text-[54px]">
+            Manage Contacts
+          </h1>
+        </div>
+
+      <div className="flex flex-col gap-6 pb-16 mx-auto max-w-[56rem] relative z-10">
         <DueBanner
           total={due.total}
           groups={due.groups}
@@ -159,15 +154,29 @@ export default function TeamPage() {
         />
 
         {ready && members.length > 0 && (
-          <div className="sm:max-w-sm sm:self-end">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, wallet, or note"
-              leadingIcon={
-                <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={1.8} />
-              }
-            />
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="sm:max-w-sm w-full">
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search by name, wallet, or note"
+                className="bg-white/[0.03] border-white/[0.06] rounded-2xl h-12 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner text-[13px]"
+                leadingIcon={
+                  <HugeiconsIcon icon={Search01Icon} size={14} strokeWidth={2} className="text-white/40" />
+                }
+              />
+            </div>
+            
+            <FancyButton
+              type="button"
+              variant="primary"
+              size="md"
+              onClick={() => setDialog({ kind: "add" })}
+              className="h-12 rounded-2xl text-[13px] shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.5)] transition-shadow"
+            >
+              <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={2.2} />
+              Add member
+            </FancyButton>
           </div>
         )}
 
@@ -176,7 +185,7 @@ export default function TeamPage() {
         )}
 
         {ready && members.length > 0 && (
-          <ul className="flex flex-col gap-2">
+          <ul className="flex flex-col gap-3">
             <AnimatePresence initial={false}>
               {filtered.map((m, i) => (
                 <MemberRow
@@ -190,15 +199,16 @@ export default function TeamPage() {
             </AnimatePresence>
 
             {filtered.length === 0 && (
-              <li className="grid place-items-center gap-1.5 rounded-xl border border-dashed border-border bg-card/30 px-6 py-10 text-center">
-                <p className="text-[13.5px] text-foreground">No matches</p>
-                <p className="text-[12px] text-muted-foreground">
+              <li className="grid place-items-center gap-1.5 rounded-[1.5rem] border border-dashed border-white/[0.08] bg-white/[0.02] px-6 py-12 text-center backdrop-blur-md">
+                <p className="text-[14px] font-medium text-white/80">No matches</p>
+                <p className="text-[13px] text-white/40">
                   Try a different filter or clear your search.
                 </p>
               </li>
             )}
           </ul>
         )}
+      </div>
       </div>
 
       <MemberDialog
@@ -230,31 +240,30 @@ function EmptyState({ onAdd }: { onAdd: () => void }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-      className="grid place-items-center gap-3 rounded-2xl border border-dashed border-border bg-card/40 px-8 py-14 text-center"
+      className="flex flex-col items-center justify-center gap-5 rounded-[2rem] border border-dashed border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-transparent px-8 py-24 text-center backdrop-blur-xl shadow-2xl"
     >
       <span
         aria-hidden="true"
-        className="grid size-12 place-items-center rounded-2xl border border-primary/20 bg-primary/10 text-primary"
+        className="grid size-16 place-items-center rounded-2xl border border-primary/30 bg-primary/20 text-primary shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)]"
       >
-        <HugeiconsIcon icon={UserGroupIcon} size={20} strokeWidth={1.6} />
+        <HugeiconsIcon icon={UserGroupIcon} size={24} strokeWidth={2} />
       </span>
-      <div className="flex flex-col gap-1">
-        <p className="text-[15px] font-medium text-foreground">
+      <div className="flex flex-col gap-2">
+        <p className="text-[20px] font-bold text-white">
           Save your team
         </p>
-        <p className="max-w-sm text-[13px] text-muted-foreground">
-          Add people you pay regularly. Each member gets a default amount and
-          token, so payroll is one click instead of a CSV.
+        <p className="max-w-sm text-[14px] text-white/50 leading-relaxed">
+          Store frequently paid contacts. Assign predefined tokens and amounts to streamline batch disbursements into a single click.
         </p>
       </div>
       <FancyButton
         type="button"
         variant="primary"
-        size="md"
+        size="lg"
         onClick={onAdd}
-        className="mt-1"
+        className="mt-2 h-12 rounded-2xl text-[14px] shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_25px_rgba(var(--primary-rgb),0.5)] transition-shadow"
       >
-        <HugeiconsIcon icon={Add01Icon} size={14} strokeWidth={2.2} />
+        <HugeiconsIcon icon={Add01Icon} size={16} strokeWidth={2.2} />
         Add first member
       </FancyButton>
     </motion.div>
@@ -285,57 +294,58 @@ function MemberRow({
         delay: Math.min(index, 8) * 0.02,
         ease: [0.22, 1, 0.36, 1],
       }}
-      className="group flex items-center gap-3 rounded-xl border border-border bg-card/60 p-3 transition-colors hover:bg-card/80 sm:gap-4 sm:p-4"
+      className="group flex items-center gap-5 rounded-[1.5rem] border border-white/[0.06] bg-gradient-to-br from-white/[0.02] to-transparent px-6 py-5 transition-all duration-300 hover:bg-white/[0.04] hover:border-primary/30 hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.1)] backdrop-blur-md"
     >
       <Avatar name={member.name} />
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex min-w-0 items-center gap-2">
-          <p className="truncate text-[14px] font-medium text-foreground">
+        <div className="flex min-w-0 items-center gap-3">
+          <p className="truncate text-[15px] font-bold text-white group-hover:text-primary transition-colors">
             {member.name}
           </p>
           {member.schedule && <ScheduleBadge schedule={member.schedule} />}
           {!supported && (
             <span
               title={`${member.token} is not available on ${solanaConfig.cluster}`}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10.5px] font-medium text-destructive"
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-destructive/30 bg-destructive/10 px-2.5 py-0.5 text-[11px] font-bold text-destructive shadow-sm"
             >
-              <HugeiconsIcon icon={Alert02Icon} size={10} strokeWidth={2.2} />
+              <HugeiconsIcon icon={Alert02Icon} size={12} strokeWidth={2} />
               {member.token} unavailable
             </span>
           )}
         </div>
-        <p className="mt-0.5 truncate font-mono text-[12px] text-muted-foreground">
+        <p className="mt-1 truncate font-mono text-[13px] text-white/40">
           {shortAddr(member.wallet)}
         </p>
         {member.schedule?.lastPaidAt && (
           <PaidIndicator lastPaidAt={member.schedule.lastPaidAt} />
         )}
         {member.note && (
-          <p className="mt-1 truncate text-[12px] text-muted-foreground/80">
+          <p className="mt-1.5 truncate text-[13px] text-white/60">
             {member.note}
           </p>
         )}
       </div>
 
-      <div className="hidden shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background/40 px-2.5 py-1.5 text-[12.5px] text-foreground sm:inline-flex">
-        <TokenIcon id={member.token} className="size-3.5" />
-        <span className="font-mono">{member.amount}</span>
-        <span className="text-muted-foreground">{member.token}</span>
+      <div className="hidden shrink-0 items-center gap-2 rounded-2xl border border-white/[0.06] bg-white/[0.02] px-4 py-2 text-[13px] text-white shadow-inner sm:inline-flex">
+        <TokenIcon id={member.token} className="size-4 drop-shadow-sm" />
+        <span className="font-mono font-bold">{member.amount}</span>
+        <span className="text-white/40 font-bold">{member.token}</span>
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
+      <div className="flex shrink-0 items-center gap-1.5 ml-2">
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
           onClick={onEdit}
           aria-label={`Edit ${member.name}`}
+          className="hover:bg-white/[0.06] text-white/60 hover:text-white rounded-xl transition-all"
         >
           <HugeiconsIcon
             icon={PencilEdit02Icon}
-            size={14}
-            strokeWidth={1.8}
+            size={16}
+            strokeWidth={2}
           />
         </Button>
         <Button
@@ -344,9 +354,9 @@ function MemberRow({
           size="icon-sm"
           onClick={onDelete}
           aria-label={`Delete ${member.name}`}
-          className="text-muted-foreground hover:text-destructive"
+          className="hover:bg-destructive/10 text-white/60 hover:text-destructive rounded-xl transition-all"
         >
-          <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={1.8} />
+          <HugeiconsIcon icon={Delete02Icon} size={16} strokeWidth={2} />
         </Button>
       </div>
     </motion.li>
@@ -366,13 +376,13 @@ function ScheduleBadge({ schedule }: { schedule: MemberSchedule }) {
             : `${label} · awaiting first run`
       }
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-0.5 text-[10.5px] font-medium",
+        "inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-bold shadow-sm",
         due
-          ? "border-primary/40 bg-primary/15 text-primary"
-          : "border-border bg-background/40 text-muted-foreground",
+          ? "border-primary/40 bg-primary/15 text-primary drop-shadow-[0_0_8px_rgba(var(--primary-rgb),0.5)]"
+          : "border-white/[0.1] bg-white/[0.05] text-white/60",
       )}
     >
-      <HugeiconsIcon icon={Calendar03Icon} size={10} strokeWidth={2.2} />
+      <HugeiconsIcon icon={Calendar03Icon} size={12} strokeWidth={2} />
       {due ? "Due now" : shortScheduleLabel(schedule)}
     </span>
   );

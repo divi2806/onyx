@@ -43,23 +43,23 @@ export function AppTopbar() {
     { title: "Onyx", subtitle: "" };
 
   return (
-    <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-background/80 px-4 backdrop-blur-md sm:px-6">
-      <SidebarTrigger className="text-muted-foreground hover:text-foreground" />
+    <header className="sticky top-0 z-30 flex h-13 items-center gap-3 border-b border-border/50 bg-background/75 px-4 backdrop-blur-xl sm:px-5">
+      <SidebarTrigger className="text-muted-foreground/60 hover:text-foreground transition-colors" />
 
-      <div className="hidden h-5 w-px bg-border sm:block" />
+      <div className="hidden h-4 w-px bg-border sm:block" />
 
       <div className="min-w-0 flex-1 overflow-hidden">
         <motion.div
           key={pathname}
-          initial={{ opacity: 0, y: 4 }}
+          initial={{ opacity: 0, y: 3 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
           className="flex flex-col leading-tight"
         >
-          <span className="truncate text-[14px] font-medium tracking-tight text-foreground">
+          <span className="truncate text-[13.5px] font-semibold tracking-[-0.02em] text-foreground">
             {meta.title}
           </span>
-          <span className="hidden truncate text-[12px] text-muted-foreground sm:block">
+          <span className="hidden truncate text-[11px] text-muted-foreground/70 sm:block">
             {meta.subtitle}
           </span>
         </motion.div>

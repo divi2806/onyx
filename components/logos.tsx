@@ -87,16 +87,21 @@ export function OnyxMark({ className, title, ...props }: LogoProps) {
       {...(props as React.SVGAttributes<SVGSVGElement>)}
     >
       {title ? <title>{title}</title> : null}
-      {/* Diamond outline */}
+      {/* Shield outer — matches new teal brand */}
       <path
-        d="M12 2L22 12L12 22L2 12Z"
+        d="M12 2L20.5 6V13C20.5 17.5 16.8 21.2 12 22.5C7.2 21.2 3.5 17.5 3.5 13V6L12 2Z"
         fill="none"
         stroke="var(--primary)"
-        strokeOpacity="0.35"
+        strokeOpacity="0.3"
         strokeWidth="1.2"
+        strokeLinejoin="round"
       />
-      {/* Left half filled */}
-      <path d="M12 2L2 12L12 22Z" fill="var(--primary)" />
+      {/* Shield left half filled */}
+      <path
+        d="M12 2L3.5 6V13C3.5 17.5 7.2 21.2 12 22.5V2Z"
+        fill="var(--primary)"
+        fillOpacity="0.9"
+      />
     </svg>
   );
 }

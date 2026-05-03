@@ -16,7 +16,6 @@ import { useWallet } from "@solana/wallet-adapter-react";
 import { motion } from "motion/react";
 import * as React from "react";
 
-import { PageHeader } from "@/components/app-shell/page-header";
 import { FancyButton } from "@/components/ui/fancy-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -204,21 +203,28 @@ export default function CompliancePage() {
   const revokedKeys = viewingKeys.filter((k) => k.revoked);
 
   return (
-    <>
-      <PageHeader
-        eyebrow="Selective disclosure"
-        title="Compliance"
-        description="Derive your viewing key, then issue date-scoped tokens to auditors. They scan exactly what you authorised — the chain reveals nothing beyond what you share."
-      />
+    <div className="mx-auto w-full max-w-screen-xl px-5">
+      <div className="py-8">
+        <span className="inline-flex items-center gap-2 rounded-full border border-primary/22 bg-primary/8 px-3 py-1 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-primary/75">
+          <span className="size-1.5 rounded-full bg-primary/70" />
+          Regulatory Audit
+        </span>
+        <div className="mt-3 flex items-center justify-between gap-4">
+          <h1 className="text-[26px] font-bold tracking-[-0.03em] text-foreground sm:text-[32px]">
+            Key Generation
+          </h1>
+        </div>
+        <div className="mt-4 h-px bg-gradient-to-r from-primary/40 via-border/50 to-transparent" />
+      </div>
 
-      <div className="mx-auto grid w-full max-w-5xl gap-6 px-4 py-10 sm:px-8 lg:grid-cols-[1.4fr_1fr]">
+      <div className="grid gap-6 pb-16 lg:grid-cols-[1fr_360px] lg:items-start">
 
         {/* ── Issue new key ─────────────────────────────────── */}
         <motion.section
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col gap-6 rounded-2xl border border-border bg-card/60 p-6 sm:p-8"
+          className="flex flex-col gap-6 rounded-xl border border-border/60 bg-card/40 p-6 sm:p-8"
         >
           <div className="flex items-start gap-3">
             <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
@@ -384,7 +390,7 @@ export default function CompliancePage() {
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
-            className="rounded-2xl border border-border bg-card/60 p-6"
+            className="rounded-xl border border-border/60 bg-card/40 p-6 lg:sticky lg:top-20"
           >
             <div className="flex items-center justify-between">
               <h3 className="text-[14px] font-medium tracking-tight text-foreground">
@@ -409,7 +415,7 @@ export default function CompliancePage() {
                       initial={{ opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: 0.18 + i * 0.05, duration: 0.28 }}
-                      className="group flex items-start gap-3 rounded-xl border border-border bg-background/40 p-3"
+                      className="group flex items-start gap-3 rounded-lg border border-border/50 bg-background/40 p-4"
                     >
                       <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md border border-primary/20 bg-primary/10 text-primary">
                         <HugeiconsIcon icon={EyeIcon} size={12} strokeWidth={1.8} />
@@ -482,7 +488,7 @@ export default function CompliancePage() {
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.32, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
-              className="rounded-2xl border border-border bg-card/60 p-6"
+              className="rounded-xl border border-border/60 bg-card/40 p-6 lg:sticky lg:top-20"
             >
               <div className="flex items-center justify-between">
                 <h3 className="text-[14px] font-medium tracking-tight text-foreground">
@@ -502,7 +508,7 @@ export default function CompliancePage() {
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.24 + i * 0.05, duration: 0.28 }}
-                    className="flex items-start gap-3 rounded-xl border border-border bg-background/40 p-3 opacity-50"
+                    className="flex items-start gap-3 rounded-lg border border-border/50 bg-background/40 p-4 opacity-50"
                   >
                     <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md border border-border bg-background/60 text-muted-foreground">
                       <HugeiconsIcon icon={EyeIcon} size={12} strokeWidth={1.8} />
@@ -522,6 +528,6 @@ export default function CompliancePage() {
           )}
         </div>
       </div>
-    </>
+    </div>
   );
 }

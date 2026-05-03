@@ -40,66 +40,65 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-md: calc(var(--radius) * 0.85);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) * 1.5);
+  --radius-2xl: calc(var(--radius) * 2);
+  --radius-3xl: calc(var(--radius) * 2.6);
+  --radius-4xl: calc(var(--radius) * 3.2);
 
-  /* Brand tokens — onyx + indigo only */
   --color-brand: var(--brand);
   --color-brand-soft: var(--brand-soft);
   --color-brand-foreground: var(--brand-foreground);
 }
 
 /*
- * Onyx theme — dark stone + electric indigo. One mode only, no light mode.
- * Both `:root` and `.dark` resolve to the same palette.
+ * Onyx — near-black + vivid violet/purple. Hue 285°.
  */
 :root,
 .dark {
-  --background: oklch(0.04 0.008 265);        /* near-black, faint violet tint */
-  --foreground: oklch(0.94 0.006 270);        /* cool off-white */
-  --card: oklch(0.08 0.009 265);
-  --card-foreground: oklch(0.94 0.006 270);
-  --popover: oklch(0.10 0.009 265);
-  --popover-foreground: oklch(0.94 0.006 270);
+  --background: oklch(0.07 0.008 280);
+  --foreground: oklch(0.94 0.005 255);
+  --card: oklch(0.10 0.009 280);
+  --card-foreground: oklch(0.94 0.005 255);
+  --popover: oklch(0.12 0.010 280);
+  --popover-foreground: oklch(0.94 0.005 255);
 
-  --primary: oklch(0.70 0.22 285);            /* electric indigo */
-  --primary-foreground: oklch(0.97 0 0);
-  --secondary: oklch(0.15 0.012 265);
-  --secondary-foreground: oklch(0.92 0 0);
-  --muted: oklch(0.12 0.008 265);
-  --muted-foreground: oklch(0.58 0.012 270);
-  --accent: oklch(0.70 0.22 285);
-  --accent-foreground: oklch(0.97 0 0);
-  --destructive: oklch(0.65 0.22 28);
+  --primary: oklch(0.68 0.24 285);
+  --primary-foreground: oklch(0.97 0.003 285);
 
-  --border: oklch(1 0 0 / 9%);
-  --input: oklch(1 0 0 / 6%);
-  --ring: oklch(0.70 0.22 285 / 50%);
+  --secondary: oklch(0.14 0.008 280);
+  --secondary-foreground: oklch(0.90 0.004 255);
+  --muted: oklch(0.12 0.006 280);
+  --muted-foreground: oklch(0.52 0.010 260);
+  --accent: oklch(0.68 0.24 285);
+  --accent-foreground: oklch(0.97 0.003 285);
+  --destructive: oklch(0.62 0.22 28);
 
-  --chart-1: oklch(0.70 0.22 285);
-  --chart-2: oklch(0.60 0.18 285);
-  --chart-3: oklch(0.50 0.14 285);
-  --chart-4: oklch(0.40 0.10 285);
-  --chart-5: oklch(0.30 0.07 285);
+  --border: oklch(1 0 0 / 8%);
+  --input: oklch(1 0 0 / 5%);
+  --ring: oklch(0.68 0.24 285 / 50%);
+
+  --chart-1: oklch(0.68 0.24 285);
+  --chart-2: oklch(0.62 0.20 265);
+  --chart-3: oklch(0.55 0.16 250);
+  --chart-4: oklch(0.48 0.12 240);
+  --chart-5: oklch(0.40 0.08 230);
 
   --radius: 0.5rem;
 
-  --sidebar: oklch(0.06 0.008 265);
-  --sidebar-foreground: oklch(0.94 0 0);
-  --sidebar-primary: oklch(0.70 0.22 285);
-  --sidebar-primary-foreground: oklch(0.97 0 0);
-  --sidebar-accent: oklch(0.13 0.01 265);
-  --sidebar-accent-foreground: oklch(0.94 0 0);
-  --sidebar-border: oklch(1 0 0 / 9%);
-  --sidebar-ring: oklch(0.70 0.22 285 / 50%);
+  --sidebar: oklch(0.06 0.007 280);
+  --sidebar-foreground: oklch(0.94 0.005 255);
+  --sidebar-primary: oklch(0.68 0.24 285);
+  --sidebar-primary-foreground: oklch(0.97 0.003 285);
+  --sidebar-accent: oklch(0.12 0.008 280);
+  --sidebar-accent-foreground: oklch(0.94 0.005 255);
+  --sidebar-border: oklch(1 0 0 / 7%);
+  --sidebar-ring: oklch(0.68 0.24 285 / 45%);
 
-  --brand: oklch(0.70 0.22 285);
-  --brand-soft: oklch(0.70 0.22 285 / 12%);
-  --brand-foreground: oklch(0.97 0 0);
+  --brand: oklch(0.68 0.24 285);
+  --brand-soft: oklch(0.68 0.24 285 / 12%);
+  --brand-foreground: oklch(0.97 0.003 285);
 }
 
 @layer base {
@@ -112,20 +111,50 @@
     color-scheme: dark;
     background: var(--background);
     scrollbar-gutter: stable;
+    /* Slightly tighter letter-spacing for Plus Jakarta Sans */
+    letter-spacing: 0em;
   }
 
   body {
     @apply bg-background text-foreground;
+    /* Subtle radial gradient at top — adds depth without noise */
+    background-image: radial-gradient(
+      ellipse 80% 50% at 50% -10%,
+      oklch(0.68 0.24 285 / 7%) 0%,
+      transparent 70%
+    );
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    letter-spacing: -0.025em;
+    font-weight: 700;
   }
 
   ::selection {
-    background: var(--brand);
-    color: var(--brand-foreground);
+    background: oklch(0.68 0.24 285 / 35%);
+    color: var(--foreground);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: oklch(1 0 0 / 12%);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: oklch(1 0 0 / 20%);
   }
 }
 
 @layer components {
-  /* Solana wallet-adapter-react — styled with the black + amber tokens */
+  /* Wallet adapter — themed to match new palette */
 
   .wallet-adapter-button {
     background-color: transparent;
@@ -136,22 +165,28 @@
     height: 2.25rem;
     padding: 0 1rem;
     border-radius: var(--radius-md);
+    font-family: var(--font-sans);
+    letter-spacing: 0em;
     transition:
-      color 0.2s ease,
-      background-color 0.2s ease,
-      border-color 0.2s ease,
-      box-shadow 0.2s ease,
-      opacity 0.2s ease;
+      color 0.18s ease,
+      background-color 0.18s ease,
+      border-color 0.18s ease,
+      box-shadow 0.18s ease,
+      opacity 0.18s ease;
   }
 
   .wallet-adapter-button.wallet-adapter-button-trigger {
-    background-color: var(--primary);
+    background: linear-gradient(
+      to bottom,
+      oklch(0.70 0.24 285),
+      oklch(0.64 0.24 285)
+    );
     color: var(--primary-foreground);
-    border: 1px solid color-mix(in oklch, var(--primary) 60%, transparent);
+    border: 1px solid oklch(0.68 0.24 285 / 40%);
     font-weight: 700;
     box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.5) inset,
-      0 8px 24px -8px color-mix(in oklch, var(--primary) 55%, transparent);
+      0 0 0 1px oklch(0.82 0.20 285 / 18%) inset,
+      0 6px 20px -4px oklch(0.68 0.24 285 / 45%);
   }
 
   .wallet-adapter-button:not([disabled]):focus-visible {
@@ -160,9 +195,13 @@
   }
 
   .wallet-adapter-button:not([disabled]):hover {
-    background-color: color-mix(in oklch, var(--primary) 92%, white);
+    background: linear-gradient(
+      to bottom,
+      oklch(0.72 0.24 285),
+      oklch(0.66 0.24 285)
+    );
     color: var(--primary-foreground);
-    border-color: color-mix(in oklch, var(--primary) 80%, transparent);
+    border-color: oklch(0.68 0.24 285 / 60%);
   }
 
   .wallet-adapter-button[disabled] {
@@ -181,22 +220,15 @@
     height: 1.25rem;
   }
 
-  .wallet-adapter-button-end-icon {
-    margin-left: 0.5rem;
-  }
-
-  .wallet-adapter-button-start-icon {
-    margin-right: 0.5rem;
-  }
+  .wallet-adapter-button-end-icon { margin-left: 0.5rem; }
+  .wallet-adapter-button-start-icon { margin-right: 0.5rem; }
 
   .wallet-adapter-dropdown-list {
     background: var(--popover);
     color: var(--popover-foreground);
     border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    box-shadow:
-      0 10px 38px -10px
-        color-mix(in oklch, black 70%, transparent);
+    border-radius: var(--radius-xl);
+    box-shadow: 0 16px 48px -8px oklch(0 0 0 / 70%);
     padding: 0.5rem;
   }
 
@@ -213,17 +245,16 @@
   }
 
   .wallet-adapter-modal-overlay {
-    background: color-mix(in oklch, black 70%, transparent);
-    backdrop-filter: blur(8px);
+    background: oklch(0 0 0 / 75%);
+    backdrop-filter: blur(10px);
   }
 
   .wallet-adapter-modal-wrapper {
     background: var(--card);
     color: var(--card-foreground);
     border: 1px solid var(--border);
-    border-radius: var(--radius-xl);
-    box-shadow:
-      0 25px 80px color-mix(in oklch, black 70%, transparent);
+    border-radius: calc(var(--radius) * 2);
+    box-shadow: 0 32px 80px oklch(0 0 0 / 70%);
   }
 
   .wallet-adapter-modal-wrapper .wallet-adapter-button {
@@ -247,6 +278,7 @@
     color: var(--foreground);
     font-weight: 700;
     font-size: 1.25rem;
+    letter-spacing: -0.02em;
   }
 
   .wallet-adapter-modal-list .wallet-adapter-button {
@@ -269,35 +301,26 @@
     color: var(--foreground);
   }
 
-  .wallet-adapter-modal-button-close svg {
-    fill: currentColor;
-  }
-
-  .wallet-adapter-modal-collapse-button svg {
-    fill: var(--muted-foreground);
-  }
+  .wallet-adapter-modal-button-close svg { fill: currentColor; }
+  .wallet-adapter-modal-collapse-button svg { fill: var(--muted-foreground); }
 
   .wallet-adapter-modal-list-more {
     background-color: transparent;
     color: var(--foreground);
   }
 
-  .wallet-adapter-modal-list-more svg {
-    fill: currentColor;
-  }
+  .wallet-adapter-modal-list-more svg { fill: currentColor; }
 
   .wallet-adapter-modal-middle-button {
-    background-color: var(--primary);
+    background: linear-gradient(to bottom, oklch(0.70 0.24 285), oklch(0.64 0.24 285));
     color: var(--primary-foreground);
-    border: 1px solid color-mix(in oklch, var(--primary) 60%, transparent);
+    border: 1px solid oklch(0.68 0.24 285 / 40%);
     border-radius: var(--radius-md);
     font-weight: 700;
     box-shadow:
-      0 1px 0 0 rgba(255, 255, 255, 0.5) inset,
-      0 8px 24px -8px color-mix(in oklch, var(--primary) 55%, transparent);
+      0 0 0 1px oklch(0.82 0.20 285 / 18%) inset,
+      0 6px 20px -4px oklch(0.68 0.24 285 / 45%);
   }
 
-  .wallet-adapter-modal-middle-button:hover {
-    opacity: 0.92;
-  }
+  .wallet-adapter-modal-middle-button:hover { opacity: 0.92; }
 }
