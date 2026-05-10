@@ -17,7 +17,7 @@ const NAV = [
   { label: "Send", href: "/pay" },
   { label: "Payroll", href: "/payroll" },
   { label: "Treasury", href: "/treasury" },
-  { label: "Compliance", href: "/compliance" },
+  { label: "Audit Access", href: "/compliance" },
   { label: "Audit", href: "/audit" },
 ];
 
@@ -35,7 +35,7 @@ const FLOWS = [
   {
     label: "Disclose",
     value: "audit",
-    meta: "date-scoped viewing key",
+    meta: "date-scoped audit token",
   },
 ];
 
@@ -44,7 +44,7 @@ const FEATURES = [
   "CSV payroll with per-recipient settlement tracking",
   "Recurring schedules for contributors and vendors",
   "Private SOL treasury rebalances into stablecoin outputs",
-  "Scoped compliance exports with auditor tokens",
+  "Scoped audit exports with auditor tokens",
   "Invoice links that route payment through the shield pool",
   "Local ledger for sent and scanned received payments",
 ];
@@ -184,8 +184,8 @@ export default function Home() {
           />
           <UseCase
             icon={ShieldKeyIcon}
-            title="Compliance"
-            body="Generate a viewing-key token for a date window and let auditors self-serve reports."
+            title="Audit Access"
+            body="Create an audit access token for a date window and let auditors self-serve scoped reports."
             href="/compliance"
           />
           <UseCase
