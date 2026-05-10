@@ -24,7 +24,6 @@ import {
   WorkbenchPanel,
 } from "@/components/ui/workbench";
 import { applyBufferPolyfill } from "@/lib/buffer-polyfill";
-import { cloakConfig } from "@/lib/cloak/config";
 import {
   clearOrphan,
   deserializeStoredUtxo,
@@ -56,8 +55,8 @@ import {
   validateRows,
   type ValidatedRow,
 } from "@/lib/payroll/validate";
-import { solanaConfig } from "@/lib/solana/config";
 import { solscanTxUrl } from "@/lib/solana/explorer";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { useDueMembers } from "@/lib/team/use-due-members";
 import { cn } from "@/lib/utils";
 
@@ -81,6 +80,8 @@ export default function PayrollPage() {
   const [parse, setParse] = React.useState<ParseState>({ kind: "idle" });
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const due = useDueMembers();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const [runOpen, setRunOpen] = React.useState(false);
 
   async function handleFile(file: File) {
@@ -119,7 +120,7 @@ export default function PayrollPage() {
         stats={[
           { label: "Scheduled due", value: due.total, hint: "from team schedules", tone: due.total > 0 ? "warning" : "default" },
           { label: "Roster state", value: parse.kind, hint: parse.kind === "ready" ? parse.fileName : "CSV not loaded" },
-          { label: "Network", value: solanaConfig.cluster, tone: solanaConfig.cluster === "devnet" ? "warning" : "default" },
+          { label: "Network", value: cluster, tone: cluster === "devnet" ? "warning" : "default" },
           { label: "Limit", value: "1000", hint: "rows per CSV" },
         ]}
         aside={
@@ -220,8 +221,13 @@ function ParsedSummary({
   onReset: () => void;
 }) {
   const [tokenId, setTokenId] = React.useState<ShieldTokenId>("USDC");
-  const shieldToken = React.useMemo(() => getShieldToken(tokenId), [tokenId]);
-  const tokenSupported = isShieldTokenSupported(tokenId);
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
+  const shieldToken = React.useMemo(
+    () => getShieldToken(tokenId, cluster),
+    [cluster, tokenId],
+  );
+  const tokenSupported = isShieldTokenSupported(tokenId, cluster);
   const wallet = useWallet();
   const batch = useBatchPayroll();
 
@@ -264,9 +270,9 @@ function ParsedSummary({
       if (!result.ok) continue;
       const row = validById.get(result.id);
       if (!row) continue;
-      appendPayment(sender, solanaConfig.cluster, {
+      appendPayment(sender, cluster, {
         id: result.payoutSig,
-        cluster: solanaConfig.cluster,
+        cluster,
         sender,
         recipient: row.wallet,
         token: tokenId,
@@ -297,7 +303,7 @@ function ParsedSummary({
       <div className="grid gap-4">
         {!tokenSupported ? (
           <InlineNotice tone="danger">
-            {tokenId} is not available on {solanaConfig.cluster}.
+            {tokenId} is not available on {cluster}.
           </InlineNotice>
         ) : null}
 
@@ -370,6 +376,8 @@ function ParsedSummary({
 function OrphanRecoveryPanel() {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const { cloakConfig, config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const sender = wallet.publicKey?.toBase58() ?? null;
   const orphans = useOrphans(sender);
   const [recovering, setRecovering] = React.useState<string | null>(null);
@@ -407,7 +415,7 @@ function OrphanRecoveryPanel() {
           enforceViewingKeyRegistration: false,
         },
       );
-      clearOrphan(senderKey, solanaConfig.cluster, record.id);
+      clearOrphan(senderKey, cluster, record.id);
       setMessage(`Recovered residual balance: ${shortSig(result.signature)}`);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Recovery failed.");
@@ -456,10 +464,12 @@ function OrphanRecoveryPanel() {
 }
 
 function useOrphans(sender: string | null): OrphanUtxoRecord[] {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const [orphans, setOrphans] = React.useState<OrphanUtxoRecord[]>([]);
   React.useEffect(() => {
     function load() {
-      setOrphans(loadOrphans(sender, solanaConfig.cluster));
+      setOrphans(loadOrphans(sender, cluster));
     }
     function onStorage(e: StorageEvent) {
       if (e.key?.startsWith("cloak:orphan-utxo:v1:")) load();
@@ -471,7 +481,7 @@ function useOrphans(sender: string | null): OrphanUtxoRecord[] {
       window.removeEventListener("storage", onStorage);
       window.removeEventListener("cloak:orphans-updated", load);
     };
-  }, [sender]);
+  }, [cluster, sender]);
   return orphans;
 }
 
@@ -482,11 +492,13 @@ function TokenSwitch({
   value: ShieldTokenId;
   onChange: (id: ShieldTokenId) => void;
 }) {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   return (
     <div className="grid grid-cols-3 gap-1 rounded-lg border border-border/70 bg-secondary/30 p-1">
       {TOKEN_OPTIONS.map((token) => {
         const active = value === token.id;
-        const supported = isShieldTokenSupported(token.id);
+        const supported = isShieldTokenSupported(token.id, cluster);
         return (
           <button
             key={token.id}
@@ -641,6 +653,7 @@ function Receipt({
   decimals: number;
   onRunAnother: () => void;
 }) {
+  const { config } = useSolanaNetwork();
   const confirmed = Object.values(execRows).filter((r) => r.status === "confirmed");
   const receiptRows = rows.filter((row) => row.isValid);
 
@@ -697,7 +710,7 @@ function Receipt({
         <ReceiptLine
           label="Aggregate shield deposit"
           value={summary.depositSignature ?? "No deposit signature"}
-          href={summary.depositSignature ? solscanTxUrl(summary.depositSignature) : undefined}
+          href={summary.depositSignature ? solscanTxUrl(summary.depositSignature, config.cluster, config.rpcUrl) : undefined}
         />
         <ReceiptLine label="Started" value={new Date(summary.startedAt).toLocaleString()} />
         <ReceiptLine label="Finished" value={new Date(summary.finishedAt).toLocaleString()} />
@@ -725,7 +738,7 @@ function Receipt({
                   </td>
                   <td className="px-3 py-3 font-mono text-muted-foreground">
                     {exec?.payoutSignature ? (
-                      <a href={solscanTxUrl(exec.payoutSignature)} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-4">
+                      <a href={solscanTxUrl(exec.payoutSignature, config.cluster, config.rpcUrl)} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-4">
                         {shortSig(exec.payoutSignature)}
                       </a>
                     ) : (
