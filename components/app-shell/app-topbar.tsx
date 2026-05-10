@@ -25,6 +25,10 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
     title: "Ledger",
     subtitle: "Your sealed outbound record — chain-verified, privately held",
   },
+  "/treasury": {
+    title: "Treasury",
+    subtitle: "Private rebalancing through Cloak swap routes",
+  },
   "/compliance": {
     title: "Compliance",
     subtitle: "Scoped viewing keys · share exactly what auditors need",
