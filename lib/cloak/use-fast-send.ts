@@ -7,7 +7,8 @@ import {
 import { PublicKey } from "@solana/web3.js";
 import * as React from "react";
 
-import { cloakConfig } from "./config";
+import { useSolanaNetwork } from "@/lib/solana/network";
+
 import {
   fastSendOnce,
   isSubmittingStatus,
@@ -58,6 +59,7 @@ const SUBMIT_TICK = 3;
 export function useFastSend() {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const { cloakConfig } = useSolanaNetwork();
   const [state, setState] = React.useState<FastSendState>(initialState);
 
   // Per-session signMessage cache, keyed on wallet pubkey. The Cloak SDK
@@ -164,7 +166,7 @@ export function useFastSend() {
         throw error;
       }
     },
-    [connection, wallet],
+    [cloakConfig, connection, wallet],
   );
 
   return { ...state, send, reset };
