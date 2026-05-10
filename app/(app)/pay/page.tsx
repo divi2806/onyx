@@ -1,17 +1,15 @@
 "use client";
 
 import {
-  Alert02Icon,
   ArrowRight01Icon,
   CheckmarkCircle01Icon,
-  Coins01Icon,
   LockIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { Progress as ProgressPrimitive } from "@base-ui/react/progress";
 import { isAddress } from "@solana/kit";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import { AnimatePresence, motion } from "motion/react";
 import * as React from "react";
 
 import { SolanaLogo, UsdcLogo, UsdtLogo } from "@/components/logos";
@@ -22,14 +20,19 @@ import {
   ProgressIndicator,
   ProgressTrack,
 } from "@/components/ui/progress";
-import { Progress as ProgressPrimitive } from "@base-ui/react/progress";
+import {
+  FieldStack,
+  InlineNotice,
+  WorkbenchPage,
+  WorkbenchPanel,
+} from "@/components/ui/workbench";
+import { appendPayment } from "@/lib/cloak/payment-history";
 import {
   getShieldToken,
   isShieldTokenSupported,
   toBaseUnits,
   type ShieldTokenId,
 } from "@/lib/cloak/tokens";
-import { appendPayment } from "@/lib/cloak/payment-history";
 import { useFastSend } from "@/lib/cloak/use-fast-send";
 import { solanaConfig } from "@/lib/solana/config";
 import { solscanTxUrl } from "@/lib/solana/explorer";
@@ -51,81 +54,20 @@ type AmountError =
 
 type AddressError = { kind: "format" } | { kind: "length" };
 
-function validateAmount(raw: string, token: TokenId): AmountError | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === ".") {
-    return { kind: "format" };
-  }
-
-  const n = Number(trimmed);
-  if (!Number.isFinite(n) || n <= 0) return { kind: "non-positive" };
-
-  const dot = trimmed.indexOf(".");
-  const decimals = dot === -1 ? 0 : trimmed.length - dot - 1;
-  const tokenMeta = TOKENS.find((t) => t.id === token)!;
-  if (decimals > tokenMeta.decimals) {
-    return { kind: "decimals", max: tokenMeta.decimals };
-  }
-
-  if (tokenMeta.min > 0 && n < tokenMeta.min) {
-    return { kind: "below-min", min: tokenMeta.min, token };
-  }
-
-  return null;
-}
-
-function validateAddress(raw: string): AddressError | null {
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-
-  if (trimmed.length < 32 || trimmed.length > 44) {
-    return { kind: "length" };
-  }
-
-  if (!isAddress(trimmed)) return { kind: "format" };
-  return null;
-}
-
-function amountErrorMessage(err: AmountError) {
-  switch (err.kind) {
-    case "format":
-      return "Numbers only. Use a single decimal point.";
-    case "non-positive":
-      return "Amount must be greater than zero.";
-    case "decimals":
-      return `Up to ${err.max} decimal places for this token.`;
-    case "below-min":
-      return `Minimum is ${err.min} ${err.token}.`;
-  }
-}
-
-function addressErrorMessage(err: AddressError) {
-  switch (err.kind) {
-    case "length":
-      return "A Solana address is 32 to 44 characters.";
-    case "format":
-      return "Not a valid Solana address.";
-  }
-}
-
 export default function PayPage() {
   const [token, setToken] = React.useState<TokenId>("USDC");
   const [amount, setAmount] = React.useState("");
   const [recipient, setRecipient] = React.useState("");
   const [amountTouched, setAmountTouched] = React.useState(false);
   const [recipientTouched, setRecipientTouched] = React.useState(false);
-
-  const wallet = useWallet();
-  const fastSend = useFastSend();
-
   const [lastSend, setLastSend] = React.useState<{
-    amount: number;
     net: number;
     token: TokenId;
     recipient: string;
   } | null>(null);
+
+  const wallet = useWallet();
+  const fastSend = useFastSend();
 
   const amountError = React.useMemo(
     () => validateAmount(amount, token),
@@ -135,19 +77,18 @@ export default function PayPage() {
     () => validateAddress(recipient),
     [recipient],
   );
-
-  const showAmountError = amountTouched && !!amountError;
-  const showAddressError = recipientTouched && !!addressError;
-
-  const amountValid = !amountError && amount.trim() !== "";
-  const addressValid = !addressError && recipient.trim() !== "";
   const shieldToken = React.useMemo(() => getShieldToken(token), [token]);
   const tokenSupported = isShieldTokenSupported(token);
-  const submitting =
-    fastSend.status === "deposit-proof" ||
-    fastSend.status === "deposit-submit" ||
-    fastSend.status === "withdraw-proof" ||
-    fastSend.status === "withdraw-submit";
+  const amountValid = !amountError && amount.trim() !== "";
+  const addressValid = !addressError && recipient.trim() !== "";
+  const submitting = isSubmitting(fastSend.status);
+  const numericAmount = amountValid ? Number(amount) : 0;
+  const variableFee = numericAmount * 0.003;
+  const recipientReceives =
+    numericAmount > 0
+      ? Math.max(0, numericAmount - variableFee - (token === "SOL" ? 0.005 : 0))
+      : 0;
+
   const canSubmit =
     amountValid &&
     addressValid &&
@@ -155,44 +96,96 @@ export default function PayPage() {
     wallet.connected &&
     !submitting;
 
-  const numericAmount = amountValid ? Number(amount) : 0;
-  const variableFee = numericAmount * 0.003;
-  const recipientReceives =
-    numericAmount > 0
-      ? Math.max(
-          0,
-          numericAmount - variableFee - (token === "SOL" ? 0.005 : 0),
-        )
-      : 0;
-  const recipientHint: React.ReactNode =
-    numericAmount > 0 && recipientReceives > 0 ? (
-      <>
-        Recipient gets{" "}
-        <span className="font-medium text-yellow-600 dark:text-yellow-400">
-          ~{formatAmount(recipientReceives)} {token}
-        </span>
-      </>
-    ) : undefined;
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setAmountTouched(true);
+    setRecipientTouched(true);
+    if (!amountValid || !addressValid || !shieldToken || !wallet.connected) return;
+
+    const recipientTrimmed = recipient.trim();
+    setLastSend({ net: recipientReceives, token, recipient: recipientTrimmed });
+
+    try {
+      const amountBaseUnits = toBaseUnits(amount, shieldToken.decimals);
+      const recipientPubkey = new PublicKey(recipientTrimmed);
+      const result = await fastSend.send({
+        amountBaseUnits,
+        mint: shieldToken.mint,
+        recipient: recipientPubkey,
+      });
+
+      if (wallet.publicKey) {
+        appendPayment(wallet.publicKey.toBase58(), solanaConfig.cluster, {
+          id: result.depositSignature,
+          cluster: solanaConfig.cluster,
+          sender: wallet.publicKey.toBase58(),
+          recipient: recipientPubkey.toBase58(),
+          token,
+          mint: shieldToken.mint.toBase58(),
+          decimals: shieldToken.decimals,
+          amountRaw: amountBaseUnits.toString(),
+          netRaw: netBaseUnits(amountBaseUnits, token === "SOL").toString(),
+          depositSignature: result.depositSignature,
+          withdrawSignature: result.withdrawSignature,
+          timestamp: Date.now(),
+          source: "pay",
+        });
+      }
+    } catch {
+      // useFastSend owns the visible error state.
+    }
+  }
 
   return (
-    <div className="mx-auto w-full max-w-screen-xl px-5 relative">
-      {/* Background radial glow */}
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,rgba(var(--primary-rgb),0.12),transparent_70%)]" aria-hidden />
+    <WorkbenchPage
+      kicker="Send module"
+      title="Private transfer workbench"
+      description="Build a single-recipient payment, review the fee path, then execute the deposit and payout proofs without exposing counterparty details on-chain."
+      stats={[
+        { label: "Cluster", value: solanaConfig.cluster, tone: solanaConfig.cluster === "devnet" ? "warning" : "default" },
+        { label: "Asset", value: token, hint: tokenSupported ? "available" : "unsupported", tone: tokenSupported ? "primary" : "danger" },
+        { label: "Recipient net", value: recipientReceives > 0 ? `${formatAmount(recipientReceives)} ${token}` : "0.00", hint: "estimated after fees" },
+        { label: "Status", value: phaseLabel(fastSend.status), tone: fastSend.status === "error" ? "danger" : fastSend.status === "success" ? "success" : "default" },
+      ]}
+      aside={
+        <div className="flex flex-col gap-4">
+          <WorkbenchPanel title="Settlement preview" eyebrow="Fees">
+            <dl className="grid gap-3 text-sm">
+              <SummaryRow label="Gross send" value={numericAmount > 0 ? `${formatAmount(numericAmount)} ${token}` : "-"} />
+              <SummaryRow label="Variable fee" value={numericAmount > 0 ? `${formatAmount(variableFee)} ${token}` : "-"} hint="0.30%" />
+              <SummaryRow label="Network fee" value="0.005 SOL" />
+              <div className="border-t border-border/70 pt-3">
+                <SummaryRow
+                  label="Recipient receives"
+                  value={recipientReceives > 0 ? `${formatAmount(recipientReceives)} ${token}` : "-"}
+                  strong
+                />
+              </div>
+            </dl>
+          </WorkbenchPanel>
 
-      {/* Page title */}
-      <div className="py-12 flex flex-col items-center text-center relative z-10">
-        <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-sm backdrop-blur-md">
-          <span className="size-1.5 rounded-full bg-primary shadow-[0_0_6px_currentColor]" />
-          Zero-Knowledge Execution
-        </span>
-        <h1 className="mt-6 text-[42px] font-black leading-[1.05] tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-br from-white to-white/40 sm:text-[54px]">
-          Transfer Anonymously
-        </h1>
-      </div>
-
-      <div className="mx-auto grid max-w-[64rem] gap-6 pb-24 lg:grid-cols-[1.2fr_1fr] lg:items-start relative z-10">
-        {/* Main column */}
-        <div className="relative flex flex-col overflow-hidden rounded-[2rem] border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-transparent p-8 shadow-2xl backdrop-blur-2xl">
+          <WorkbenchPanel title="Privacy path" eyebrow="Cloak">
+            <ul className="grid gap-3 text-sm text-muted-foreground">
+              {[
+                "Deposit proof creates a shielded UTXO.",
+                "Withdraw proof pays the recipient from the shield pool.",
+                "Local history stores your audit trail in this browser.",
+              ].map((item) => (
+                <li key={item} className="flex gap-3">
+                  <HugeiconsIcon icon={LockIcon} size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-primary" aria-hidden="true" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </WorkbenchPanel>
+        </div>
+      }
+    >
+      <WorkbenchPanel
+        title={fastSend.status === "success" && lastSend ? "Transfer complete" : "Transfer builder"}
+        eyebrow="Execution"
+        description={fastSend.status === "success" && lastSend ? "Both shield and payout transactions confirmed." : "Enter the recipient and amount, then sign the proof transactions in your wallet."}
+      >
         {fastSend.status === "success" && lastSend ? (
           <SuccessCard
             net={lastSend.net}
@@ -210,206 +203,87 @@ export default function PayPage() {
             }}
           />
         ) : (
-        <motion.form
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col gap-7"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            setAmountTouched(true);
-            setRecipientTouched(true);
-            if (!amountValid || !addressValid) return;
-            if (!shieldToken) return;
-            if (!wallet.connected) return;
-            setLastSend({
-              amount: numericAmount,
-              net: recipientReceives,
-              token,
-              recipient: recipient.trim(),
-            });
-            try {
-              const amountBaseUnits = toBaseUnits(
-                amount,
-                shieldToken.decimals,
-              );
-              const recipientPubkey = new PublicKey(recipient.trim());
-              const result = await fastSend.send({
-                amountBaseUnits,
-                mint: shieldToken.mint,
-                recipient: recipientPubkey,
-              });
-              if (wallet.publicKey) {
-                appendPayment(wallet.publicKey.toBase58(), solanaConfig.cluster, {
-                  id: result.depositSignature,
-                  cluster: solanaConfig.cluster,
-                  sender: wallet.publicKey.toBase58(),
-                  recipient: recipientPubkey.toBase58(),
-                  token,
-                  mint: shieldToken.mint.toBase58(),
-                  decimals: shieldToken.decimals,
-                  amountRaw: amountBaseUnits.toString(),
-                  netRaw: netBaseUnits(amountBaseUnits, token === "SOL").toString(),
-                  depositSignature: result.depositSignature,
-                  withdrawSignature: result.withdrawSignature,
-                  timestamp: Date.now(),
-                  source: "pay",
-                });
-              }
-            } catch {
-              // surfaced via fastSend.error
-            }
-          }}
-          noValidate
-        >
-          <div className="flex flex-col gap-2.5">
-            <Label htmlFor="recipient" className="text-white/60 ml-1">Recipient address</Label>
-            <Input
-              id="recipient"
-              placeholder="Solana wallet address"
-              autoComplete="off"
-              spellCheck={false}
-              value={recipient}
-              onChange={(e) => setRecipient(e.target.value)}
-              onBlur={() => setRecipientTouched(true)}
-              invalid={showAddressError}
-              aria-invalid={showAddressError || undefined}
-              aria-describedby={
-                showAddressError ? "recipient-error" : "recipient-hint"
-              }
-              className="font-mono text-[14px] bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner"
-              trailingIcon={
-                addressValid ? (
-                  <HugeiconsIcon
-                    icon={CheckmarkCircle01Icon}
-                    size={16}
-                    strokeWidth={2}
-                    className="text-primary drop-shadow-[0_0_6px_currentColor]"
-                  />
-                ) : showAddressError ? (
-                  <HugeiconsIcon
-                    icon={Alert02Icon}
-                    size={16}
-                    strokeWidth={2}
-                    className="text-destructive"
-                  />
-                ) : undefined
-              }
-            />
-            <FieldFootnote
-              id="recipient"
-              hint="Address is hashed into the proof. It is never written on-chain."
-              error={showAddressError ? addressErrorMessage(addressError!) : null}
-            />
-          </div>
-
-          <div className="flex flex-col gap-2.5">
-            <Label htmlFor="amount" className="text-white/60 ml-1">Amount</Label>
-            <div className="flex flex-col gap-3 sm:flex-row">
+          <form className="grid gap-5" onSubmit={handleSubmit} noValidate aria-busy={submitting}>
+            <FieldStack>
+              <Label htmlFor="recipient" required>Recipient wallet</Label>
               <Input
-                id="amount"
-                inputMode="decimal"
-                placeholder="0.00"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                onBlur={() => setAmountTouched(true)}
-                invalid={showAmountError}
-                aria-invalid={showAmountError || undefined}
-                aria-describedby={showAmountError ? "amount-error" : undefined}
-                className="font-mono sm:flex-1 text-[16px] bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner"
+                id="recipient"
+                placeholder="7xKX...p2aB"
+                autoComplete="off"
+                spellCheck={false}
+                value={recipient}
+                onChange={(e) => setRecipient(e.target.value)}
+                onBlur={() => setRecipientTouched(true)}
+                invalid={recipientTouched && !!addressError}
+                aria-invalid={recipientTouched && !!addressError ? "true" : undefined}
+                aria-describedby={recipientTouched && addressError ? "recipient-error" : "recipient-hint"}
+                className="font-mono"
                 trailingIcon={
-                  amountValid ? (
-                    <HugeiconsIcon
-                      icon={CheckmarkCircle01Icon}
-                      size={16}
-                      strokeWidth={2}
-                      className="text-primary drop-shadow-[0_0_6px_currentColor]"
-                    />
-                  ) : showAmountError ? (
-                    <HugeiconsIcon
-                      icon={Alert02Icon}
-                      size={16}
-                      strokeWidth={2}
-                      className="text-destructive"
-                    />
+                  addressValid ? (
+                    <HugeiconsIcon icon={CheckmarkCircle01Icon} size={16} strokeWidth={2} className="text-primary" aria-hidden="true" />
                   ) : undefined
                 }
               />
-              <div className="flex items-center gap-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-1.5 shadow-inner">
-                {TOKENS.map((t) => {
-                  const isActive = token === t.id;
-                  return (
+              <FieldFootnote
+                id="recipient"
+                hint="The address is only used inside the payout proof."
+                error={recipientTouched && addressError ? addressErrorMessage(addressError) : null}
+              />
+            </FieldStack>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+              <FieldStack>
+                <Label htmlFor="amount" required>Amount</Label>
+                <Input
+                  id="amount"
+                  inputMode="decimal"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  onBlur={() => setAmountTouched(true)}
+                  invalid={amountTouched && !!amountError}
+                  aria-invalid={amountTouched && !!amountError ? "true" : undefined}
+                  aria-describedby={amountTouched && amountError ? "amount-error" : "amount-hint"}
+                  className="font-mono"
+                />
+                <FieldFootnote
+                  id="amount"
+                  hint={numericAmount > 0 ? `Estimated net: ${formatAmount(recipientReceives)} ${token}` : "Minimum 0.01"}
+                  error={amountTouched && amountError ? amountErrorMessage(amountError) : null}
+                />
+              </FieldStack>
+
+              <FieldStack>
+                <Label>Token</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {TOKENS.map((option) => (
                     <button
-                      key={t.id}
+                      key={option.id}
                       type="button"
-                      onClick={() => setToken(t.id)}
+                      onClick={() => setToken(option.id)}
+                      disabled={!isShieldTokenSupported(option.id)}
                       className={cn(
-                        "relative flex h-full items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition-colors",
-                        isActive
-                          ? "text-white drop-shadow-md"
-                          : "text-white/40 hover:text-white/80",
+                        "flex h-11 items-center justify-center gap-2 rounded-lg border border-border/80 bg-secondary/35 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
+                        token === option.id && "border-primary/40 bg-primary/12 text-primary",
                       )}
                     >
-                      {isActive && (
-                        <motion.span
-                          layoutId="pay-token-active"
-                          aria-hidden="true"
-                          className="absolute inset-0 -z-0 rounded-xl bg-white/[0.08] border border-white/[0.1] shadow-sm backdrop-blur-md"
-                          transition={{
-                            type: "spring",
-                            stiffness: 400,
-                            damping: 30,
-                          }}
-                        />
-                      )}
-                      <span className="relative z-10 flex items-center gap-1.5">
-                        <t.Logo className="size-4 drop-shadow-sm" />
-                        {t.label}
-                      </span>
+                      <option.Logo className="size-4" />
+                      {option.label}
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              </FieldStack>
             </div>
-            <FieldFootnote
-              id="amount"
-              hint={recipientHint}
-              error={showAmountError ? amountErrorMessage(amountError!) : null}
-            />
-          </div>
 
-          <div className="flex flex-col gap-2.5">
-            <Label htmlFor="memo" hint="Optional, encrypted" className="text-white/60 ml-1">
-              Memo
-            </Label>
-            <Input 
-              id="memo" 
-              placeholder="e.g. invoice #2026-04" 
-              className="bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner text-[14px]"
-            />
-          </div>
+            {!tokenSupported ? (
+              <InlineNotice tone="danger">This token is not available on {solanaConfig.cluster}.</InlineNotice>
+            ) : null}
 
-          <div className="flex flex-col gap-4 pt-4">
-            <FancyButton
-              type="submit"
-              variant="primary"
-              size="lg"
-              disabled={!canSubmit}
-              className="h-14 rounded-2xl text-[15px] shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.5)] transition-shadow"
-            >
-              {submitButtonLabel(fastSend.status, wallet.connected)}
-              <HugeiconsIcon
-                icon={ArrowRight01Icon}
-                size={16}
-                strokeWidth={2.2}
-              />
-            </FancyButton>
-
-            {!tokenSupported && (
-              <p className="text-[12px] text-destructive">
-                {token} is not available on {solanaConfig.cluster}.
-              </p>
-            )}
+            {fastSend.status === "error" && fastSend.error ? (
+              <InlineNotice tone="danger" title="Transfer failed">
+                {fastSend.error.message}
+              </InlineNotice>
+            ) : null}
 
             <TransactionProgress
               show={submitting}
@@ -417,81 +291,19 @@ export default function PayPage() {
               message={fastSend.progress ?? phaseLabel(fastSend.status)}
             />
 
-            {fastSend.status === "error" && fastSend.error && (
-              <p className="text-[12px] text-destructive">
-                {fastSend.error.message}
+            <div className="flex flex-col gap-3 border-t border-border/70 pt-5 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-muted-foreground">
+                Wallet prompts appear for proof authorization and transaction signing.
               </p>
-            )}
-          </div>
-        </motion.form>
+              <FancyButton type="submit" variant="primary" size="xl" disabled={!canSubmit}>
+                {submitButtonLabel(fastSend.status, wallet.connected)}
+                <HugeiconsIcon icon={ArrowRight01Icon} size={16} strokeWidth={2.2} aria-hidden="true" />
+              </FancyButton>
+            </div>
+          </form>
         )}
-        </div>
-
-        {/* Right panel — summary + privacy notes */}
-        <motion.div
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.08 }}
-          className="flex flex-col gap-6 lg:sticky lg:top-24"
-        >
-          {/* Summary */}
-          <div className="rounded-[1.5rem] border border-white/[0.06] bg-gradient-to-br from-white/[0.02] to-transparent p-6 shadow-xl backdrop-blur-xl">
-            <p className="mb-5 text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
-              Summary
-            </p>
-            <dl className="flex flex-col gap-4 text-[13.5px]">
-              <div className="flex items-center justify-between">
-                <dt className="text-white/50 font-medium">You send</dt>
-                <dd className="font-mono font-bold text-white">
-                  {numericAmount > 0 ? `${formatAmount(numericAmount)} ${token}` : "—"}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-white/50 font-medium">Variable fee <span className="text-[11px] opacity-40">0.30%</span></dt>
-                <dd className="font-mono text-white/60">
-                  {numericAmount > 0 ? `${formatAmount(variableFee)} ${token}` : "—"}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between">
-                <dt className="text-white/50 font-medium">Network fee</dt>
-                <dd className="font-mono text-white/60">0.005 SOL</dd>
-              </div>
-              <div className="h-px bg-white/[0.06] my-1" />
-              <div className="flex items-center justify-between">
-                <dt className="font-bold text-white/80">Recipient gets</dt>
-                <dd className="font-mono font-black text-transparent bg-clip-text bg-gradient-to-r from-primary to-primary/60 text-[15px]">
-                  {recipientReceives > 0 ? `${formatAmount(recipientReceives)} ${token}` : "—"}
-                </dd>
-              </div>
-            </dl>
-            {token !== "SOL" && numericAmount > 0 && (
-              <p className="mt-4 text-[11px] text-white/30 font-medium">
-                Network fee paid from your SOL balance.
-              </p>
-            )}
-          </div>
-
-          {/* Privacy guarantees */}
-          <div className="rounded-[1.5rem] border border-white/[0.06] bg-gradient-to-br from-white/[0.02] to-transparent p-6 shadow-xl backdrop-blur-xl">
-            <p className="mb-4 text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
-              Privacy
-            </p>
-            <ul className="flex flex-col gap-4">
-              {[
-                { icon: LockIcon, text: "Zero-knowledge proofs are computed client-side, ensuring your data never leaves your device." },
-                { icon: CheckmarkCircle01Icon, text: "Transactions are validated by the Onyx protocol with complete anonymity." },
-                { icon: Coins01Icon, text: "Instantaneous settlement powered by the Solana network." },
-              ].map((it) => (
-                <li key={it.text} className="flex items-start gap-3 text-[13px] leading-relaxed text-white/50 font-medium">
-                  <HugeiconsIcon icon={it.icon} size={16} strokeWidth={2} className="mt-0.5 shrink-0 text-primary drop-shadow-[0_0_4px_rgba(var(--primary-rgb),0.5)]" />
-                  {it.text}
-                </li>
-              ))}
-            </ul>
-          </div>
-        </motion.div>
-      </div>
-    </div>
+      </WorkbenchPanel>
+    </WorkbenchPage>
   );
 }
 
@@ -504,38 +316,18 @@ function FieldFootnote({
   hint?: React.ReactNode;
   error: string | null;
 }) {
-  return (
-    <div className="relative min-h-[16px]">
-      <AnimatePresence mode="wait" initial={false}>
-        {error ? (
-          <motion.p
-            key="error"
-            id={`${id}-error`}
-            role="alert"
-            initial={{ opacity: 0, y: -2 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -2 }}
-            transition={{ duration: 0.16, ease: "easeOut" }}
-            className="text-[11.5px] text-destructive"
-          >
-            {error}
-          </motion.p>
-        ) : hint ? (
-          <motion.p
-            key="hint"
-            id={`${id}-hint`}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.16 }}
-            className="text-[11.5px] text-muted-foreground"
-          >
-            {hint}
-          </motion.p>
-        ) : null}
-      </AnimatePresence>
-    </div>
-  );
+  if (error) {
+    return (
+      <p id={`${id}-error`} role="alert" className="text-xs text-destructive">
+        {error}
+      </p>
+    );
+  }
+  return hint ? (
+    <p id={`${id}-hint`} className="text-xs text-muted-foreground">
+      {hint}
+    </p>
+  ) : null;
 }
 
 function SuccessCard({
@@ -554,172 +346,67 @@ function SuccessCard({
   onSendAnother: () => void;
 }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col gap-6 rounded-xl border border-border/60 bg-card/40 p-6 sm:p-8"
-    >
-      <div className="flex items-start gap-3">
-        <motion.span
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{
-            duration: 0.32,
-            ease: [0.22, 1, 0.36, 1],
-            delay: 0.05,
-          }}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
-          aria-hidden="true"
-        >
-          <HugeiconsIcon
-            icon={CheckmarkCircle01Icon}
-            size={18}
-            strokeWidth={2.2}
-          />
-        </motion.span>
-        <div className="flex flex-col">
-          <h2 className="text-[18px] font-medium tracking-tight text-foreground">
-            Sent privately
-          </h2>
-          <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
-            Recipient received{" "}
-            <span className="font-medium text-yellow-600 dark:text-yellow-400">
-              {formatAmount(net)} {token}
-            </span>
-            . The chain shows the payment from the Cloak shield-pool, not your
-            wallet.
-          </p>
-          <p className="mt-1 font-mono text-[11.5px] text-muted-foreground">
-            to {shortAddress(recipient)}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-col divide-y divide-border overflow-hidden rounded-xl border border-border bg-background/40">
-        <SuccessTxRow
-          label="Shield tx"
-          hint="Your deposit into the pool"
-          signature={depositSignature}
-        />
-        <SuccessTxRow
-          label="Payout tx"
-          hint="What the recipient sees"
-          signature={withdrawSignature}
-        />
-      </div>
-
-      <FancyButton
-        type="button"
-        variant="primary"
-        size="lg"
-        className="self-start"
-        onClick={onSendAnother}
+    <div className="grid gap-4">
+      <InlineNotice
+        tone="success"
+        title={`${formatAmount(net)} ${token} sent privately`}
+        action={
+          <FancyButton type="button" variant="neutral" size="md" onClick={onSendAnother}>
+            Send another
+          </FancyButton>
+        }
       >
-        Send another
-        <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={2.2} />
-      </FancyButton>
-    </motion.div>
-  );
-}
-
-function SuccessTxRow({
-  label,
-  hint,
-  signature,
-}: {
-  label: string;
-  hint: string;
-  signature: string | null;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3">
-      <div className="flex flex-col">
-        <span className="text-[12.5px] font-medium text-foreground">
-          {label}
-        </span>
-        <span className="text-[11px] text-muted-foreground">{hint}</span>
+        Recipient {shortAddress(recipient)} can verify the payout on Solscan.
+      </InlineNotice>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <TxLink label="Shield deposit" signature={depositSignature} />
+        <TxLink label="Private payout" signature={withdrawSignature} />
       </div>
-      {signature ? (
-        <a
-          href={solscanTxUrl(signature)}
-          target="_blank"
-          rel="noreferrer"
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card/60 px-2.5 py-1 font-mono text-[11.5px] text-foreground transition-colors hover:bg-secondary"
-        >
-          <span>{shortSig(signature)}</span>
-          <span aria-hidden="true">↗</span>
-          <span className="sr-only">Open on Solscan</span>
-        </a>
-      ) : (
-        <span className="font-mono text-[11.5px] text-muted-foreground">·</span>
-      )}
     </div>
   );
 }
 
-function netBaseUnits(amount: bigint, tokenIsSol: boolean): bigint {
-  const variable = (amount * 3n) / 1000n;
-  const fixed = tokenIsSol ? 5_000_000n : 0n;
-  const net = amount - variable - fixed;
-  return net < 0n ? 0n : net;
+function TxLink({ label, signature }: { label: string; signature: string | null }) {
+  return (
+    <a
+      href={signature ? solscanTxUrl(signature) : undefined}
+      target="_blank"
+      rel="noreferrer"
+      className={cn(
+        "rounded-lg border border-border/80 bg-secondary/25 p-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        signature ? "hover:border-primary/35 hover:bg-secondary/45" : "pointer-events-none opacity-50",
+      )}
+    >
+      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="mt-2 font-mono text-sm text-foreground">
+        {signature ? shortSig(signature) : "-"}
+      </p>
+    </a>
+  );
 }
 
-function shortSig(sig: string): string {
-  if (sig.length <= 10) return sig;
-  return `${sig.slice(0, 4)}…${sig.slice(-4)}`;
-}
-
-function shortAddress(addr: string): string {
-  if (addr.length <= 12) return addr;
-  return `${addr.slice(0, 6)}…${addr.slice(-6)}`;
-}
-
-function Row({
+function SummaryRow({
   label,
   value,
   hint,
-  emphasis,
-  accent,
+  strong,
 }: {
   label: string;
   value: string;
   hint?: string;
-  emphasis?: boolean;
-  accent?: boolean;
+  strong?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between py-2.5">
-      <dt className="flex items-center gap-2 text-muted-foreground">
-        <span>{label}</span>
-        {hint && (
-          <span className="font-mono text-[11px] text-muted-foreground/70">
-            {hint}
-          </span>
-        )}
+    <div className="flex items-baseline justify-between gap-4">
+      <dt className="text-muted-foreground">
+        {label}
+        {hint ? <span className="ml-2 font-mono text-xs text-muted-foreground/70">{hint}</span> : null}
       </dt>
-      <dd
-        className={cn(
-          "font-mono",
-          accent
-            ? "font-medium text-yellow-600 dark:text-yellow-400"
-            : emphasis
-              ? "text-foreground"
-              : "text-foreground/80",
-        )}
-      >
+      <dd className={cn("font-mono tabular-nums", strong ? "text-primary" : "text-foreground")}>
         {value}
       </dd>
     </div>
   );
-}
-
-function formatAmount(n: number) {
-  if (!Number.isFinite(n) || n === 0) return "0.00";
-  return n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 6,
-  });
 }
 
 function TransactionProgress({
@@ -731,35 +418,77 @@ function TransactionProgress({
   percent: number;
   message: string;
 }) {
+  if (!show) return null;
   const display = Math.round(Math.max(0, Math.min(100, percent)));
-
   return (
-    <AnimatePresence initial={false}>
-      {show && (
-        <motion.div
-          key="tx-progress"
-          initial={{ opacity: 0, y: -2 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -2 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
-          className="flex flex-col gap-1.5"
-          role="status"
-          aria-live="polite"
-        >
-          <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
-            <span className="truncate pr-2">{message}</span>
-            <span className="font-mono tabular-nums text-foreground/80">
-              {display}%
-            </span>
-          </div>
-          <ProgressPrimitive.Root value={display}>
-            <ProgressTrack className="h-1.5 bg-secondary/70">
-              <ProgressIndicator />
-            </ProgressTrack>
-          </ProgressPrimitive.Root>
-        </motion.div>
-      )}
-    </AnimatePresence>
+    <div className="rounded-lg border border-primary/25 bg-primary/10 p-4" role="status" aria-live="polite">
+      <div className="mb-2 flex items-center justify-between gap-4 text-sm">
+        <span className="truncate text-foreground">{message}</span>
+        <span className="font-mono tabular-nums text-primary">{display}%</span>
+      </div>
+      <ProgressPrimitive.Root value={display}>
+        <ProgressTrack className="h-2 bg-background/60">
+          <ProgressIndicator />
+        </ProgressTrack>
+      </ProgressPrimitive.Root>
+    </div>
+  );
+}
+
+function validateAmount(raw: string, token: TokenId): AmountError | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (!/^\d*\.?\d*$/.test(trimmed) || trimmed === ".") return { kind: "format" };
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n <= 0) return { kind: "non-positive" };
+  const dot = trimmed.indexOf(".");
+  const decimals = dot === -1 ? 0 : trimmed.length - dot - 1;
+  const tokenMeta = TOKENS.find((t) => t.id === token)!;
+  if (decimals > tokenMeta.decimals) return { kind: "decimals", max: tokenMeta.decimals };
+  if (n < tokenMeta.min) return { kind: "below-min", min: tokenMeta.min, token };
+  return null;
+}
+
+function validateAddress(raw: string): AddressError | null {
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  if (trimmed.length < 32 || trimmed.length > 44) return { kind: "length" };
+  if (!isAddress(trimmed)) return { kind: "format" };
+  return null;
+}
+
+function amountErrorMessage(err: AmountError) {
+  switch (err.kind) {
+    case "format":
+      return "Use numbers and one decimal point.";
+    case "non-positive":
+      return "Amount must be greater than zero.";
+    case "decimals":
+      return `Use up to ${err.max} decimal places.`;
+    case "below-min":
+      return `Minimum is ${err.min} ${err.token}.`;
+  }
+}
+
+function addressErrorMessage(err: AddressError) {
+  return err.kind === "length"
+    ? "A Solana address is 32 to 44 characters."
+    : "Enter a valid Solana address.";
+}
+
+function netBaseUnits(amount: bigint, tokenIsSol: boolean): bigint {
+  const variable = (amount * 3n) / 1000n;
+  const fixed = tokenIsSol ? 5_000_000n : 0n;
+  const net = amount - variable - fixed;
+  return net < 0n ? 0n : net;
+}
+
+function isSubmitting(status: ReturnType<typeof useFastSend>["status"]): boolean {
+  return (
+    status === "deposit-proof" ||
+    status === "deposit-submit" ||
+    status === "withdraw-proof" ||
+    status === "withdraw-submit"
   );
 }
 
@@ -767,18 +496,16 @@ function submitButtonLabel(
   status: ReturnType<typeof useFastSend>["status"],
   connected: boolean,
 ): string {
-  if (!connected) return "Connect wallet to send";
+  if (!connected) return "Connect wallet";
   switch (status) {
     case "deposit-proof":
-      return "Generating proof (1/2)…";
+      return "Generating deposit proof";
     case "deposit-submit":
-      return "Shielding…";
+      return "Shielding deposit";
     case "withdraw-proof":
-      return "Generating proof (2/2)…";
+      return "Generating payout proof";
     case "withdraw-submit":
-      return "Paying recipient…";
-    case "success":
-      return "Send another";
+      return "Paying recipient";
     default:
       return "Send privately";
   }
@@ -787,14 +514,36 @@ function submitButtonLabel(
 function phaseLabel(status: ReturnType<typeof useFastSend>["status"]): string {
   switch (status) {
     case "deposit-proof":
-      return "Generating deposit proof";
+      return "Deposit proof";
     case "deposit-submit":
-      return "Shielding into pool";
+      return "Deposit submit";
     case "withdraw-proof":
-      return "Generating withdraw proof";
+      return "Payout proof";
     case "withdraw-submit":
-      return "Paying recipient";
+      return "Payout submit";
+    case "success":
+      return "Confirmed";
+    case "error":
+      return "Failed";
     default:
-      return "Working";
+      return "Ready";
   }
+}
+
+function formatAmount(n: number) {
+  if (!Number.isFinite(n) || n === 0) return "0.00";
+  return n.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 6,
+  });
+}
+
+function shortSig(sig: string): string {
+  if (sig.length <= 10) return sig;
+  return `${sig.slice(0, 5)}...${sig.slice(-5)}`;
+}
+
+function shortAddress(addr: string): string {
+  if (addr.length <= 14) return addr;
+  return `${addr.slice(0, 6)}...${addr.slice(-6)}`;
 }
