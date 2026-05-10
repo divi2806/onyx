@@ -13,7 +13,6 @@ import {
 } from "@/components/logos";
 import { ConnectButton } from "@/components/solana/connect-button";
 import { fancyButtonVariants } from "@/components/ui/fancy-button";
-import { cn } from "@/lib/utils";
 
 function TopBar() {
   return (
