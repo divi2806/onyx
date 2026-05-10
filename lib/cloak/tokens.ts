@@ -43,21 +43,30 @@ const REGISTRY: Record<
   },
 };
 
-export function getShieldToken(id: ShieldTokenId): ShieldToken | null {
-  const entry = REGISTRY[solanaConfig.cluster]?.[id];
+export function getShieldToken(
+  id: ShieldTokenId,
+  cluster: SolanaCluster = solanaConfig.cluster,
+): ShieldToken | null {
+  const entry = REGISTRY[cluster]?.[id];
   if (!entry) return null;
   return { id, ...entry };
 }
 
-export function isShieldTokenSupported(id: ShieldTokenId): boolean {
-  return getShieldToken(id) !== null;
+export function isShieldTokenSupported(
+  id: ShieldTokenId,
+  cluster: SolanaCluster = solanaConfig.cluster,
+): boolean {
+  return getShieldToken(id, cluster) !== null;
 }
 
-export function getShieldTokenByMint(mint: string): ShieldToken | null {
-  const cluster = REGISTRY[solanaConfig.cluster];
-  if (!cluster) return null;
-  for (const id of Object.keys(cluster) as ShieldTokenId[]) {
-    const entry = cluster[id];
+export function getShieldTokenByMint(
+  mint: string,
+  cluster: SolanaCluster = solanaConfig.cluster,
+): ShieldToken | null {
+  const registry = REGISTRY[cluster];
+  if (!registry) return null;
+  for (const id of Object.keys(registry) as ShieldTokenId[]) {
+    const entry = registry[id];
     if (entry && entry.mint.toBase58() === mint) {
       return { id, ...entry };
     }
