@@ -28,7 +28,7 @@ const NAV_MAIN = [
 
 const NAV_TOOLS = [
   { href: "/treasury", label: "Treasury", icon: BankIcon },
-  { href: "/compliance", label: "Compliance", icon: FileSecurityIcon },
+  { href: "/compliance", label: "Audit Access", icon: FileSecurityIcon },
   { href: "/invoice", label: "Invoice", icon: InvoiceIcon },
 ];
 
