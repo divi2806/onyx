@@ -24,7 +24,6 @@ import {
   WorkbenchPage,
   WorkbenchPanel,
 } from "@/components/ui/workbench";
-import { cloakConfig } from "@/lib/cloak/config";
 import { deriveNk, registerNkWithRelay } from "@/lib/cloak/derive-nk";
 import { createMemoizedSignMessage } from "@/lib/cloak/sign-message-cache";
 import { useViewingKeys } from "@/lib/cloak/use-viewing-keys";
@@ -42,13 +41,16 @@ import {
   revokeViewingKey,
   type ViewingKey,
 } from "@/lib/cloak/viewing-keys";
-import { solanaConfig } from "@/lib/solana/config";
+import type { SolanaCluster } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { cn } from "@/lib/utils";
 
 type GenerateState = "idle" | "signing" | "registering" | "done" | "error";
 
-export default function CompliancePage() {
+export default function AuditAccessPage() {
   const { publicKey, signMessage } = useWallet();
+  const { cloakConfig, config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const viewingKeys = useViewingKeys();
 
   const [auditor, setAuditor] = React.useState("");
@@ -172,9 +174,10 @@ export default function CompliancePage() {
         dateFrom,
         dateTo,
         expiresInDays: expiryDays,
+        cluster,
       });
 
-      const key = addViewingKey(solanaConfig.cluster, publicKey.toBase58(), {
+      const key = addViewingKey(cluster, publicKey.toBase58(), {
         auditor: auditor.trim(),
         dateFrom,
         dateTo,
@@ -234,6 +237,7 @@ export default function CompliancePage() {
           body: JSON.stringify({
             wallet: publicKey.toBase58(),
             viewingKeyNk: key.nkHex,
+            cluster,
             afterTimestamp,
             beforeTimestamp,
           }),
@@ -276,36 +280,36 @@ export default function CompliancePage() {
         }),
       }).catch(() => undefined);
     }
-    revokeViewingKey(solanaConfig.cluster, publicKey.toBase58(), key.id);
+    revokeViewingKey(cluster, publicKey.toBase58(), key.id);
     void refreshLogs(publicKey.toBase58());
   }
 
   return (
     <WorkbenchPage
-      kicker="Compliance module"
-      title="Viewing-key desk"
-      description="Derive a local NK, register it with the relay, and issue server-enforced audit capabilities with immutable scope."
+      kicker="Audit access"
+      title="Audit access desk"
+      description="Create an opaque audit access token for an auditor. The raw Cloak viewing key is not shared; the token only works for the wallet, dates, role, and disclosure mode you choose."
       stats={[
-        { label: "Active keys", value: activeKeys.length, hint: "available tokens", tone: activeKeys.length ? "primary" : "default" },
+        { label: "Active access", value: activeKeys.length, hint: "available tokens", tone: activeKeys.length ? "primary" : "default" },
         { label: "Revoked", value: revokedKeys.length, hint: "local revoke flag" },
         { label: "Relay", value: cloakConfig.relayUrl.includes("devnet") ? "devnet" : "mainnet", hint: "Cloak endpoint" },
         { label: "Wallet", value: publicKey ? "connected" : "missing", tone: publicKey ? "success" : "warning" },
       ]}
       aside={
-        <WorkbenchPanel title="Compliance model" eyebrow="Scope">
+        <WorkbenchPanel title="How handoff works" eyebrow="Audit">
           <div className="grid gap-3 text-sm text-muted-foreground">
-            <p>Shared tokens are opaque. Auditors cannot read or edit the NK.</p>
-            <p>The server decrypts the token, enforces expiry and date range, then scans Cloak.</p>
-            <p>Revocation is enforced by the app server for active runtime sessions.</p>
+            <p>You sign once to derive and register the Cloak viewing key for this wallet.</p>
+            <p>Onyx seals the wallet, date range, role, and disclosure mode into an audit access token.</p>
+            <p>Share that token with the auditor. They open the audit portal, paste it, run the scan, and export CSV.</p>
           </div>
         </WorkbenchPanel>
       }
     >
       <div className="grid gap-4">
-        <WorkbenchPanel title="Issue token" eyebrow="Generate">
+        <WorkbenchPanel title="Create audit access" eyebrow="Generate">
           <div className="grid gap-5">
             {!publicKey ? (
-              <InlineNotice tone="warning">Connect your wallet to derive a viewing key.</InlineNotice>
+              <InlineNotice tone="warning">Connect your wallet to create audit access.</InlineNotice>
             ) : null}
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -375,12 +379,12 @@ export default function CompliancePage() {
             </div>
 
             {regWarning ? <InlineNotice tone="warning">{regWarning}</InlineNotice> : null}
-            {error ? <InlineNotice tone="danger" title="Compliance action failed">{error}</InlineNotice> : null}
+            {error ? <InlineNotice tone="danger" title="Audit access failed">{error}</InlineNotice> : null}
 
             {lastToken ? (
               <InlineNotice
                 tone="success"
-                title="Token ready"
+                title="Audit access token ready"
                 action={
                   <Button type="button" variant="outline" onClick={() => handleCopy(lastToken, "new")}>
                     <HugeiconsIcon icon={copied === "new" ? CheckmarkCircle01Icon : Copy01Icon} size={14} strokeWidth={2} aria-hidden="true" />
@@ -388,6 +392,9 @@ export default function CompliancePage() {
                   </Button>
                 }
               >
+                <p className="mb-2 text-sm text-muted-foreground">
+                  Copy this token and send it to the auditor. They paste it in the audit portal to scan only this approved scope.
+                </p>
                 <code className="block truncate font-mono text-xs text-foreground">{lastToken}</code>
               </InlineNotice>
             ) : null}
@@ -405,16 +412,16 @@ export default function CompliancePage() {
               ) : (
                 <HugeiconsIcon icon={KeyIcon} size={15} strokeWidth={2.2} aria-hidden="true" />
               )}
-              {state === "signing" ? "Signing" : state === "registering" ? "Registering" : "Generate token"}
+              {state === "signing" ? "Signing" : state === "registering" ? "Registering" : "Create audit token"}
               {!isLoading ? <HugeiconsIcon icon={ArrowRight01Icon} size={15} strokeWidth={2.2} aria-hidden="true" /> : null}
             </FancyButton>
           </div>
         </WorkbenchPanel>
 
-        <WorkbenchPanel title="Issued keys" eyebrow="Manage">
+        <WorkbenchPanel title="Active audit access" eyebrow="Manage">
           <div className="grid gap-3">
             {activeKeys.length === 0 ? (
-              <InlineNotice>No active keys yet.</InlineNotice>
+              <InlineNotice>No active audit access tokens yet.</InlineNotice>
             ) : (
               activeKeys.map((key) => (
                 <KeyRow
@@ -432,7 +439,7 @@ export default function CompliancePage() {
         </WorkbenchPanel>
 
         {revokedKeys.length > 0 ? (
-          <WorkbenchPanel title="Revoked keys" eyebrow="Archive">
+          <WorkbenchPanel title="Revoked audit access" eyebrow="Archive">
             <div className="grid gap-2">
               {revokedKeys.map((key) => (
                 <div key={key.id} className="rounded-lg border border-border/70 bg-secondary/20 p-3 opacity-60">
@@ -502,13 +509,13 @@ function KeyRow({
         </p>
       </div>
       <div className="flex flex-wrap gap-2 sm:justify-end">
-        <IconButton label="Copy token" onClick={onCopy}>
+        <IconButton label="Copy audit token" onClick={onCopy}>
           <HugeiconsIcon icon={copied ? CheckmarkCircle01Icon : Copy01Icon} size={15} strokeWidth={2} className={cn(copied && "text-primary")} aria-hidden="true" />
         </IconButton>
         <IconButton label="Export CSV" onClick={onExport} disabled={exporting}>
           <HugeiconsIcon icon={exporting ? Loading03Icon : Download01Icon} size={15} strokeWidth={2} className={cn(exporting && "animate-spin")} aria-hidden="true" />
         </IconButton>
-        <IconButton label="Revoke key" onClick={onRevoke} danger>
+        <IconButton label="Revoke access" onClick={onRevoke} danger>
           <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={2} aria-hidden="true" />
         </IconButton>
       </div>
@@ -526,14 +533,12 @@ async function issueAuditCapability(input: {
   dateFrom: string;
   dateTo: string;
   expiresInDays: number;
+  cluster: SolanaCluster;
 }): Promise<{ token: string; capability: AuditCapabilityPublic }> {
   const res = await fetch("/api/audit/issue", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...input,
-      cluster: solanaConfig.cluster,
-    }),
+    body: JSON.stringify(input),
   });
   const body = (await res.json()) as {
     token?: string;
