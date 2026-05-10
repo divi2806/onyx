@@ -2,6 +2,8 @@
 // failed/reloaded run leaves residual funds recoverable via fullWithdraw.
 
 import type { SolanaCluster } from "@/lib/solana/config";
+import { PublicKey } from "@solana/web3.js";
+import type { Utxo } from "@cloak.dev/sdk";
 
 const STORAGE_PREFIX = "cloak:orphan-utxo:v1";
 
@@ -148,4 +150,21 @@ export function bigintToHex(value: bigint): string {
 export function hexToBigint(hex: string): bigint {
   if (!hex) return 0n;
   return BigInt(hex.startsWith("0x") ? hex : `0x${hex}`);
+}
+
+export function deserializeStoredUtxo(record: OrphanUtxoRecord): Utxo {
+  return {
+    amount: BigInt(record.utxo.amount),
+    blinding: hexToBigint(record.utxo.blinding),
+    mintAddress: new PublicKey(record.utxo.mintAddress),
+    index: record.utxo.index,
+    commitment: record.utxo.commitment ? hexToBigint(record.utxo.commitment) : undefined,
+    siblingCommitment: record.utxo.siblingCommitment
+      ? hexToBigint(record.utxo.siblingCommitment)
+      : undefined,
+    keypair: {
+      privateKey: hexToBigint(record.utxo.keypair.privateKey),
+      publicKey: hexToBigint(record.utxo.keypair.publicKey),
+    },
+  };
 }
