@@ -1,28 +1,41 @@
 "use client";
 
 import {
-  Alert02Icon,
   ArrowRight01Icon,
-  CheckmarkCircle01Icon,
-  Coins01Icon,
+  Download01Icon,
   Delete02Icon,
+  Refresh01Icon,
   Upload01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { AnimatePresence, motion } from "motion/react";
+import { fullWithdraw } from "@cloak.dev/sdk";
+import { useConnection, useWallet } from "@solana/wallet-adapter-react";
 import * as React from "react";
-
-import { useWallet } from "@solana/wallet-adapter-react";
-import Link from "next/link";
 
 import { SolanaLogo, UsdcLogo, UsdtLogo } from "@/components/logos";
 import { DueBanner } from "@/components/team/due-banner";
 import { DueRunDialog } from "@/components/team/due-run-dialog";
+import { Button } from "@/components/ui/button";
 import { FancyButton } from "@/components/ui/fancy-button";
+import {
+  EmptyWorkbench,
+  InlineNotice,
+  WorkbenchPage,
+  WorkbenchPanel,
+} from "@/components/ui/workbench";
+import { applyBufferPolyfill } from "@/lib/buffer-polyfill";
+import { cloakConfig } from "@/lib/cloak/config";
+import {
+  clearOrphan,
+  deserializeStoredUtxo,
+  loadOrphans,
+  type OrphanUtxoRecord,
+} from "@/lib/cloak/orphan-utxo-store";
 import {
   appendPayment,
   formatBaseUnits,
 } from "@/lib/cloak/payment-history";
+import { createMemoizedSignMessage } from "@/lib/cloak/sign-message-cache";
 import {
   getShieldToken,
   isShieldTokenSupported,
@@ -51,26 +64,31 @@ import { cn } from "@/lib/utils";
 type ParseState =
   | { kind: "idle" }
   | { kind: "parsing"; fileName: string }
-  | {
-      kind: "ready";
-      fileName: string;
-      result: PayrollParseResult;
-    }
+  | { kind: "ready"; fileName: string; result: PayrollParseResult }
   | { kind: "error"; fileName: string; message: string };
 
+const TOKEN_OPTIONS: {
+  id: ShieldTokenId;
+  label: string;
+  Logo: React.ComponentType<{ className?: string }>;
+}[] = [
+  { id: "SOL", label: "SOL", Logo: SolanaLogo },
+  { id: "USDC", label: "USDC", Logo: UsdcLogo },
+  { id: "USDT", label: "USDT", Logo: UsdtLogo },
+];
+
 export default function PayrollPage() {
-  const [drag, setDrag] = React.useState(false);
   const [parse, setParse] = React.useState<ParseState>({ kind: "idle" });
   const inputRef = React.useRef<HTMLInputElement | null>(null);
   const due = useDueMembers();
   const [runOpen, setRunOpen] = React.useState(false);
 
-  const handleFile = React.useCallback(async (file: File) => {
+  async function handleFile(file: File) {
     if (!file.name.toLowerCase().endsWith(".csv")) {
       setParse({
         kind: "error",
         fileName: file.name,
-        message: "Only .csv files are supported.",
+        message: "Only CSV files are supported.",
       });
       return;
     }
@@ -85,67 +103,65 @@ export default function PayrollPage() {
         message: err instanceof Error ? err.message : String(err),
       });
     }
-  }, []);
+  }
 
-  const reset = () => {
+  function reset() {
     setParse({ kind: "idle" });
     if (inputRef.current) inputRef.current.value = "";
-  };
-
-  const showDropzone = parse.kind === "idle" || parse.kind === "error";
+  }
 
   return (
-    <div className="mx-auto w-full max-w-screen-xl px-5 relative">
-      {/* Background radial glow */}
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,rgba(var(--primary-rgb),0.12),transparent_70%)]" aria-hidden />
+    <>
+      <WorkbenchPage
+        kicker="Payroll module"
+        title="Batch payment control room"
+        description="Load a roster, validate every recipient and amount, then run one shielded deposit with private payouts for each row."
+        stats={[
+          { label: "Scheduled due", value: due.total, hint: "from team schedules", tone: due.total > 0 ? "warning" : "default" },
+          { label: "Roster state", value: parse.kind, hint: parse.kind === "ready" ? parse.fileName : "CSV not loaded" },
+          { label: "Network", value: solanaConfig.cluster, tone: solanaConfig.cluster === "devnet" ? "warning" : "default" },
+          { label: "Limit", value: "1000", hint: "rows per CSV" },
+        ]}
+        aside={
+          <WorkbenchPanel title="Roster contract" eyebrow="CSV">
+            <div className="grid gap-3 text-sm text-muted-foreground">
+              <p>Required columns: wallet and amount.</p>
+              <p>Optional columns: label, name, memo, or note.</p>
+              <p>Each valid row becomes a private payout from the shielded batch balance.</p>
+            </div>
+          </WorkbenchPanel>
+        }
+      >
+        <div className="grid gap-4">
+          <DueBanner
+            total={due.total}
+            groups={due.groups}
+            onRunNow={() => setRunOpen(true)}
+          />
+          <OrphanRecoveryPanel />
 
-      {/* Page title */}
-      <div className="py-12 flex flex-col items-center text-center relative z-10">
-        <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-sm backdrop-blur-md">
-          <span className="size-1.5 rounded-full bg-primary shadow-[0_0_6px_currentColor]" />
-          Mass Distribution
-        </span>
-        <h1 className="mt-6 text-[42px] font-black leading-[1.05] tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-br from-white to-white/40 sm:text-[54px]">
-          Batch Payments
-        </h1>
-      </div>
-
-      <div className="flex flex-col gap-8 pb-16 mx-auto max-w-[56rem] relative z-10">
-        <DueBanner
-          total={due.total}
-          groups={due.groups}
-          onRunNow={() => setRunOpen(true)}
-        />
-
-        <AnimatePresence mode="wait" initial={false}>
-          {showDropzone ? (
-            <motion.label
-              key="dropzone"
+          <WorkbenchPanel
+            title="Roster import"
+            eyebrow="Input"
+            description="Select or drop a CSV. Validation runs locally before any wallet signature."
+            action={
+              parse.kind !== "idle" ? (
+                <Button type="button" variant="outline" onClick={reset}>
+                  <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={2} aria-hidden="true" />
+                  Clear
+                </Button>
+              ) : null
+            }
+          >
+            <label
               htmlFor="roster-upload"
-              onDragEnter={(e) => {
-                e.preventDefault();
-                setDrag(true);
-              }}
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDrag(true);
-              }}
-              onDragLeave={() => setDrag(false)}
+              onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => {
                 e.preventDefault();
-                setDrag(false);
                 const file = e.dataTransfer.files?.[0];
                 if (file) void handleFile(file);
               }}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-              className={cn(
-                "group relative flex cursor-pointer flex-col items-center justify-center gap-5 overflow-hidden rounded-[2rem] border-2 border-dashed bg-gradient-to-br from-white/[0.04] to-transparent px-8 py-24 text-center transition-all duration-500 backdrop-blur-xl shadow-2xl",
-                "border-white/[0.1] hover:border-primary/40 hover:bg-white/[0.06] hover:shadow-[0_0_40px_rgba(var(--primary-rgb),0.1)]",
-                drag && "border-primary/60 bg-primary/10 shadow-[0_0_50px_rgba(var(--primary-rgb),0.2)]",
-              )}
+              className="grid cursor-pointer place-items-center rounded-lg border border-dashed border-border/90 bg-secondary/20 p-8 text-center transition-colors hover:border-primary/40 hover:bg-primary/5"
             >
               <input
                 ref={inputRef}
@@ -158,85 +174,49 @@ export default function PayrollPage() {
                   if (file) void handleFile(file);
                 }}
               />
+              <HugeiconsIcon icon={Upload01Icon} size={24} strokeWidth={1.8} className="text-primary" aria-hidden="true" />
+              <p className="mt-3 text-sm font-medium text-foreground">
+                {parse.kind === "idle" ? "Drop roster CSV or browse" : parse.fileName}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {parse.kind === "parsing"
+                  ? "Parsing roster..."
+                  : parse.kind === "error"
+                    ? parse.message
+                    : "wallet, amount, optional label"}
+              </p>
+            </label>
+          </WorkbenchPanel>
 
-              <motion.div
-                aria-hidden="true"
-                initial={{ scale: 0.92, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{
-                  delay: 0.08,
-                  type: "spring",
-                  stiffness: 320,
-                  damping: 22,
-                }}
-                className="grid size-16 place-items-center rounded-2xl border border-primary/30 bg-primary/20 text-primary shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] group-hover:scale-110 transition-transform duration-500"
-              >
-                <HugeiconsIcon icon={Upload01Icon} size={24} strokeWidth={2} />
-              </motion.div>
-
-              <div className="flex flex-col gap-2">
-                <p className="text-[20px] font-bold text-white group-hover:text-primary transition-colors duration-300">
-                  Drop your roster CSV
-                </p>
-                <p className="text-[14px] text-white/50 max-w-sm mx-auto leading-relaxed">
-                  Columns: wallet, amount. Optional: label. Up to 1,000 rows.
-                </p>
-              </div>
-
-              <span className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/[0.1] bg-white/[0.05] px-4 py-1.5 font-mono text-[12px] font-bold text-white/60 backdrop-blur-md">
-                <HugeiconsIcon icon={Coins01Icon} size={14} strokeWidth={2} className="text-primary" />
-                SOL · USDC · USDT
-              </span>
-
-              {parse.kind === "error" && (
-                <div className="mt-4 flex items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-[13px] text-destructive shadow-sm backdrop-blur-md font-medium">
-                  <HugeiconsIcon
-                    icon={Alert02Icon}
-                    size={16}
-                    strokeWidth={2}
-                  />
-                  <span>
-                    <span className="font-mono">{parse.fileName}</span>:{" "}
-                    {parse.message}
-                  </span>
-                </div>
-              )}
-            </motion.label>
+          {parse.kind === "ready" ? (
+            <ParsedSummary state={parse} onReset={reset} />
+          ) : parse.kind === "error" ? (
+            <InlineNotice tone="danger" title="Import failed">
+              {parse.message}
+            </InlineNotice>
           ) : (
-            <ParsedSummary
-              key="parsed"
-              state={parse}
-              onReset={reset}
+            <EmptyWorkbench
+              title="No roster loaded"
+              description="Load a CSV to preview recipients, net amounts, and validation issues before signing."
             />
           )}
-        </AnimatePresence>
-
-      </div>
+        </div>
+      </WorkbenchPage>
 
       <DueRunDialog
         open={runOpen}
         groups={due.groups}
         onClose={() => setRunOpen(false)}
       />
-    </div>
+    </>
   );
 }
-
-const TOKEN_OPTIONS: {
-  id: ShieldTokenId;
-  label: string;
-  Logo: React.ComponentType<{ className?: string }>;
-}[] = [
-  { id: "SOL", label: "SOL", Logo: SolanaLogo },
-  { id: "USDC", label: "USDC", Logo: UsdcLogo },
-  { id: "USDT", label: "USDT", Logo: UsdtLogo },
-];
 
 function ParsedSummary({
   state,
   onReset,
 }: {
-  state: Extract<ParseState, { kind: "ready" } | { kind: "parsing" }>;
+  state: Extract<ParseState, { kind: "ready" }>;
   onReset: () => void;
 }) {
   const [tokenId, setTokenId] = React.useState<ShieldTokenId>("USDC");
@@ -245,39 +225,25 @@ function ParsedSummary({
   const wallet = useWallet();
   const batch = useBatchPayroll();
 
-  const validated: ValidatedRow[] = React.useMemo(() => {
-    if (state.kind !== "ready" || !shieldToken) return [];
+  const validated = React.useMemo(() => {
+    if (!shieldToken) return [];
     return validateRows(state.result.rows, shieldToken);
-  }, [state, shieldToken]);
+  }, [state.result.rows, shieldToken]);
 
   const totals = React.useMemo(() => totalsFor(validated), [validated]);
-
-  const tokenDecimals = shieldToken?.decimals ?? 0;
+  const validRows = React.useMemo(
+    () => validated.filter((r) => r.isValid),
+    [validated],
+  );
 
   const canRun =
     batch.status === "idle" &&
     tokenSupported &&
     wallet.connected &&
-    totals.validCount > 0;
+    validRows.length > 0;
 
-  const runLabel =
-    batch.status === "running"
-      ? batch.phase === "depositing-proof"
-        ? `Shielding · ${Math.round(batch.depositPercent)}%`
-        : batch.phase === "depositing-submit"
-          ? "Submitting deposit"
-          : `Paying ${runProgress(batch.rows)}`
-      : batch.status === "done"
-        ? "Run complete"
-        : !wallet.connected
-          ? "Connect wallet to run"
-          : totals.validCount === 0
-            ? "No valid rows"
-            : `Run payroll (${totals.validCount})`;
-
-  const onRun = React.useCallback(async () => {
+  async function onRun() {
     if (!shieldToken || !wallet.publicKey) return;
-    const validRows = validated.filter((r) => r.isValid);
     const validById = new Map(validRows.map((r) => [r.row.rowNumber, r]));
 
     const outcome = await batch.run({
@@ -296,20 +262,18 @@ function ParsedSummary({
     const sender = wallet.publicKey.toBase58();
     for (const result of outcome.results) {
       if (!result.ok) continue;
-      const r = validById.get(result.id);
-      if (!r) continue;
-      // The whole batch shares one deposit; each row has its own payout sig.
-      // Use payoutSig as the record id so /history shows N distinct rows.
+      const row = validById.get(result.id);
+      if (!row) continue;
       appendPayment(sender, solanaConfig.cluster, {
         id: result.payoutSig,
         cluster: solanaConfig.cluster,
         sender,
-        recipient: r.wallet,
+        recipient: row.wallet,
         token: tokenId,
         mint: shieldToken.mint.toBase58(),
         decimals: shieldToken.decimals,
-        amountRaw: r.amountBaseUnits!.toString(),
-        netRaw: r.netBaseUnits!.toString(),
+        amountRaw: row.amountBaseUnits!.toString(),
+        netRaw: row.netBaseUnits!.toString(),
         depositSignature: outcome.depositSignature,
         withdrawSignature: result.payoutSig,
         timestamp: Date.now(),
@@ -317,413 +281,230 @@ function ParsedSummary({
         source: "payroll",
       });
     }
-  }, [batch, shieldToken, tokenId, validated, wallet.publicKey]);
+  }
 
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -4 }}
-      transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col gap-6 rounded-[2rem] border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-10 backdrop-blur-xl shadow-2xl"
-    >
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex min-w-0 flex-col">
-          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/30">
-            Roster
-          </p>
-          <p className="mt-1 truncate font-mono text-[13.5px] text-foreground">
-            {state.fileName}
-          </p>
-          {state.kind === "ready" && (
-            <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11.5px]">
-              <span className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-primary">
-                <HugeiconsIcon
-                  icon={CheckmarkCircle01Icon}
-                  size={10}
-                  strokeWidth={2.2}
-                />
-                {totals.validCount} valid
-              </span>
-              {totals.invalidCount > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-destructive">
-                  <HugeiconsIcon
-                    icon={Alert02Icon}
-                    size={10}
-                    strokeWidth={2.2}
-                  />
-                  {totals.invalidCount} invalid
-                </span>
-              )}
-              {state.result.errors.length > 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background/40 px-2 py-0.5 text-muted-foreground">
-                  {state.result.errors.length} parse issue
-                  {state.result.errors.length === 1 ? "" : "s"}
-                </span>
-              )}
-            </div>
-          )}
-          {state.kind === "parsing" && (
-            <p className="mt-1 text-[12.5px] text-muted-foreground">Parsing…</p>
-          )}
-        </div>
-
+    <WorkbenchPanel
+      title="Validated roster"
+      eyebrow="Review"
+      description={`${totals.validCount} valid rows, ${totals.invalidCount} blocked rows.`}
+      action={
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-1.5 shadow-inner">
-            {TOKEN_OPTIONS.map((t) => {
-              const isActive = tokenId === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTokenId(t.id)}
-                  className={cn(
-                    "relative flex h-full items-center gap-1.5 rounded-xl px-3 py-2 text-[13px] font-bold transition-colors",
-                    isActive
-                      ? "text-white drop-shadow-md"
-                      : "text-white/40 hover:text-white/80",
-                  )}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId="payroll-token-active"
-                      aria-hidden="true"
-                      className="absolute inset-0 -z-0 rounded-xl bg-white/[0.08] border border-white/[0.1] shadow-sm backdrop-blur-md"
-                      transition={{
-                        type: "spring",
-                        stiffness: 400,
-                        damping: 30,
-                      }}
-                    />
-                  )}
-                  <span className="relative z-10 flex items-center gap-1.5">
-                    <t.Logo className="size-4 drop-shadow-sm" />
-                    {t.label}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          <button
-            type="button"
-            onClick={onReset}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.08] bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-white/50 transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive shadow-sm"
-          >
-            <HugeiconsIcon icon={Delete02Icon} size={14} strokeWidth={2} />
-            Clear
-          </button>
+          <TokenSwitch value={tokenId} onChange={setTokenId} />
         </div>
-      </div>
+      }
+    >
+      <div className="grid gap-4">
+        {!tokenSupported ? (
+          <InlineNotice tone="danger">
+            {tokenId} is not available on {solanaConfig.cluster}.
+          </InlineNotice>
+        ) : null}
 
-      {!tokenSupported && (
-        <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12px] text-destructive">
-          <HugeiconsIcon icon={Alert02Icon} size={12} strokeWidth={2.2} />
-          {tokenId} is not available on {solanaConfig.cluster}.
-        </div>
-      )}
-
-      {state.kind === "ready" && state.result.errors.length > 0 && (
-        <ul className="flex flex-col gap-1.5 rounded-xl border border-destructive/20 bg-destructive/5 p-3 text-[12px] text-destructive">
-          {state.result.errors.slice(0, 5).map((err, i) => (
-            <li key={i} className="flex items-start gap-2">
-              <HugeiconsIcon
-                icon={Alert02Icon}
-                size={12}
-                strokeWidth={2.2}
-                className="mt-0.5 shrink-0"
-              />
-              <span>
-                {err.rowNumber !== null ? `Row ${err.rowNumber}: ` : ""}
-                {err.message}
+        {state.result.errors.length > 0 ? (
+          <InlineNotice tone="warning" title="Parse warnings">
+            {state.result.errors.slice(0, 3).map((e) => (
+              <span key={`${e.rowNumber ?? "file"}-${e.message}`} className="block">
+                {e.rowNumber !== null ? `Row ${e.rowNumber}: ` : ""}
+                {e.message}
               </span>
-            </li>
-          ))}
-          {state.result.errors.length > 5 && (
-            <li className="text-muted-foreground">
-              +{state.result.errors.length - 5} more
-            </li>
-          )}
-        </ul>
-      )}
+            ))}
+          </InlineNotice>
+        ) : null}
 
-      {state.kind === "ready" &&
-        validated.length > 0 &&
-        shieldToken &&
-        batch.status !== "done" && (
-          <PreviewTable
+        <div className="grid gap-3 sm:grid-cols-4">
+          <MiniMetric label="Gross" value={`${formatBaseUnits(totals.totalBaseUnits.toString(), shieldToken?.decimals ?? 0)} ${tokenId}`} />
+          <MiniMetric label="Net" value={`${formatBaseUnits(totals.totalNetBaseUnits.toString(), shieldToken?.decimals ?? 0)} ${tokenId}`} />
+          <MiniMetric label="Variable fee" value={`${formatBaseUnits(totals.totalVariableFeeBaseUnits.toString(), shieldToken?.decimals ?? 0)} ${tokenId}`} />
+          <MiniMetric label="Fixed fee" value={`${formatBaseUnits(totals.totalFixedFeeLamports.toString(), 9)} SOL`} />
+        </div>
+
+        <PreviewTable
+          rows={validated}
+          tokenId={tokenId}
+          decimals={shieldToken?.decimals ?? 0}
+          execRows={batch.rows}
+          activeRowId={batch.activeRowId}
+        />
+
+        {batch.status === "done" && batch.summary ? (
+          <Receipt
+            summary={batch.summary}
+            execRows={batch.rows}
             rows={validated}
             tokenId={tokenId}
-            decimals={tokenDecimals}
-            execRows={batch.rows}
-            activeRowId={batch.activeRowId}
-            activeStartedAt={batch.activeStartedAt}
+            decimals={shieldToken?.decimals ?? 0}
+            onRunAnother={() => {
+              batch.reset();
+              onReset();
+            }}
           />
-        )}
-
-      {state.kind === "ready" &&
-        validated.length > 0 &&
-        batch.status !== "done" && (
-          <TotalsCard
-            totals={totals}
-            tokenId={tokenId}
-            tokenDecimals={tokenDecimals}
-          />
-        )}
-
-      {state.kind === "ready" &&
-        validated.length > 0 &&
-        batch.status !== "done" && (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        ) : (
+          <div className="flex flex-col gap-3 border-t border-border/70 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-sm text-muted-foreground">
+              {batch.status === "running"
+                ? runLabel(batch.phase, batch.rows, batch.depositPercent)
+                : "One aggregate shield deposit, then one private payout per valid row."}
+            </p>
             <FancyButton
               type="button"
               variant="primary"
-              size="lg"
+              size="xl"
               disabled={!canRun}
               onClick={onRun}
-              className="h-14 rounded-2xl text-[15px] shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.5)] transition-shadow px-8"
             >
-              {runLabel}
-              <HugeiconsIcon
-                icon={ArrowRight01Icon}
-                size={16}
-                strokeWidth={2.2}
-              />
+              {batch.status === "running"
+                ? runLabel(batch.phase, batch.rows, batch.depositPercent)
+                : !wallet.connected
+                  ? "Connect wallet"
+                  : `Run ${totals.validCount} payouts`}
+              <HugeiconsIcon icon={ArrowRight01Icon} size={16} strokeWidth={2.2} aria-hidden="true" />
             </FancyButton>
-
-            {(batch.phase === "depositing-proof" ||
-              batch.phase === "depositing-submit") && (
-              <span className="inline-flex items-center gap-2 text-[12px] text-muted-foreground">
-                <span className="relative flex size-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/40" />
-                  <span className="relative inline-flex size-1.5 rounded-full bg-primary" />
-                </span>
-                <span className="truncate">
-                  {batch.depositProgress ?? "Shielding into pool"}
-                </span>
-              </span>
-            )}
           </div>
         )}
-
-      {state.kind === "ready" && batch.status === "done" && batch.summary && (
-        <Receipt
-          summary={batch.summary}
-          validated={validated}
-          execRows={batch.rows}
-          onRunAnother={() => {
-            batch.reset();
-            onReset();
-          }}
-        />
-      )}
-    </motion.section>
+      </div>
+    </WorkbenchPanel>
   );
 }
 
-function Receipt({
-  summary,
-  validated,
-  execRows,
-  onRunAnother,
-}: {
-  summary: {
-    total: number;
-    confirmed: number;
-    failed: number;
-    startedAt: number;
-    finishedAt: number;
-    depositSignature: string | null;
-  };
-  validated: ValidatedRow[];
-  execRows: Record<number, BatchRowState>;
-  onRunAnother: () => void;
-}) {
-  const durationSeconds = (summary.finishedAt - summary.startedAt) / 1000;
-  const validRows = validated.filter((r) => r.isValid);
-  const invalidSkipped = validated.length - validRows.length;
+function OrphanRecoveryPanel() {
+  const { connection } = useConnection();
+  const wallet = useWallet();
+  const sender = wallet.publicKey?.toBase58() ?? null;
+  const orphans = useOrphans(sender);
+  const [recovering, setRecovering] = React.useState<string | null>(null);
+  const [message, setMessage] = React.useState<string | null>(null);
+  const signCacheRef = React.useRef<{
+    key: string;
+    fn: ((msg: Uint8Array) => Promise<Uint8Array>) | null;
+  }>({ key: "", fn: null });
+
+  if (!sender || orphans.length === 0) return null;
+  const senderKey = sender;
+
+  async function reclaim(record: OrphanUtxoRecord) {
+    if (!wallet.publicKey || !wallet.signTransaction || !wallet.signMessage) return;
+    setRecovering(record.id);
+    setMessage(null);
+    try {
+      applyBufferPolyfill();
+      if (signCacheRef.current.key !== senderKey || !signCacheRef.current.fn) {
+        signCacheRef.current = {
+          key: senderKey,
+          fn: createMemoizedSignMessage(wallet.signMessage),
+        };
+      }
+      const result = await fullWithdraw(
+        [deserializeStoredUtxo(record)],
+        wallet.publicKey,
+        {
+          connection,
+          programId: cloakConfig.programId,
+          relayUrl: cloakConfig.relayUrl,
+          walletPublicKey: wallet.publicKey,
+          signTransaction: wallet.signTransaction,
+          signMessage: signCacheRef.current.fn!,
+          enforceViewingKeyRegistration: false,
+        },
+      );
+      clearOrphan(senderKey, solanaConfig.cluster, record.id);
+      setMessage(`Recovered residual balance: ${shortSig(result.signature)}`);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Recovery failed.");
+    } finally {
+      setRecovering(null);
+    }
+  }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col gap-5 rounded-2xl border border-border bg-background/40 p-5 sm:p-6"
-    >
-      <div className="flex items-start gap-3">
-        <motion.span
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1], delay: 0.05 }}
-          className="flex size-9 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary"
-          aria-hidden="true"
-        >
-          <HugeiconsIcon
-            icon={CheckmarkCircle01Icon}
-            size={18}
-            strokeWidth={2.2}
-          />
-        </motion.span>
-        <div className="flex flex-col">
-          <h3 className="text-[16px] font-medium tracking-tight text-foreground">
-            Roster complete
-          </h3>
-          <p className="mt-1 text-[12.5px] leading-5 text-muted-foreground">
-            <span className="font-medium text-foreground">
-              {summary.confirmed} of {summary.total}
-            </span>{" "}
-            confirmed
-            {summary.failed > 0 && (
-              <>
-                {" · "}
-                <span className="font-medium text-destructive">
-                  {summary.failed} failed
-                </span>
-              </>
-            )}
-            {" · "}
-            {durationSeconds.toFixed(1)}s
-            {invalidSkipped > 0 && ` · ${invalidSkipped} skipped`}
-          </p>
-          <p className="mt-1 font-mono text-[11px] text-muted-foreground">
-            Total: <span className="text-foreground/70">[redacted]</span>
-          </p>
-          {summary.depositSignature && (
-            <p className="mt-1 text-[11px] text-muted-foreground">
-              Batch deposit:{" "}
-              <a
-                href={solscanTxUrl(summary.depositSignature)}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-foreground/80 underline underline-offset-2"
-              >
-                {shortSig(summary.depositSignature)} ↗
-              </a>
-            </p>
-          )}
-        </div>
+    <WorkbenchPanel title="Residual shielded balance" eyebrow="Recovery">
+      <div className="grid gap-3">
+        <InlineNotice tone="warning" title="Incomplete payroll deposits found">
+          A previous batch left change in a recoverable shielded UTXO. Reclaim it before starting another run.
+        </InlineNotice>
+        {message ? <InlineNotice>{message}</InlineNotice> : null}
+        {orphans.map((record) => (
+          <div key={record.id} className="grid gap-3 rounded-lg border border-border/60 bg-secondary/15 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="min-w-0">
+              <p className="font-mono text-sm text-foreground">
+                {formatBaseUnits(record.utxo.amount, record.decimals)} {record.tokenId}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {record.rowsRemaining} rows remaining · deposit {shortSig(record.depositSignature)}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={recovering === record.id}
+              onClick={() => reclaim(record)}
+            >
+              <HugeiconsIcon
+                icon={recovering === record.id ? Refresh01Icon : ArrowRight01Icon}
+                size={14}
+                strokeWidth={2}
+                className={cn(recovering === record.id && "animate-spin")}
+                aria-hidden="true"
+              />
+              Reclaim
+            </Button>
+          </div>
+        ))}
       </div>
-
-      <div className="overflow-hidden rounded-xl border border-border">
-        <div className="max-h-[360px] overflow-auto">
-          <table className="w-full text-left text-[12.5px]">
-            <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
-              <tr className="border-b border-border text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-                <th className="px-3 py-2 font-medium">#</th>
-                <th className="px-3 py-2 font-medium">Recipient</th>
-                <th className="px-3 py-2 font-medium">Outcome</th>
-                <th className="px-3 py-2 text-right font-medium">Tx</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border font-mono">
-              {validRows.map((r) => {
-                const exec = execRows[r.row.rowNumber];
-                const isConfirmed = exec?.status === "confirmed";
-                const isFailed = exec?.status === "failed";
-                return (
-                  <tr
-                    key={r.row.rowNumber}
-                    className={cn(
-                      isFailed && "bg-destructive/5",
-                    )}
-                  >
-                    <td className="px-3 py-2 text-[11px] text-muted-foreground">
-                      {r.row.rowNumber}
-                    </td>
-                    <td className="px-3 py-2 text-foreground/90">
-                      {shortAddr(r.wallet)}
-                    </td>
-                    <td className="px-3 py-2">
-                      {isConfirmed ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary">
-                          <HugeiconsIcon
-                            icon={CheckmarkCircle01Icon}
-                            size={10}
-                            strokeWidth={2.5}
-                          />
-                          Confirmed
-                        </span>
-                      ) : isFailed ? (
-                        <span
-                          title={exec?.errorMessage}
-                          className="inline-flex items-center gap-1 rounded-full bg-destructive/15 px-2 py-0.5 text-[11px] font-medium text-destructive"
-                        >
-                          <HugeiconsIcon
-                            icon={Alert02Icon}
-                            size={10}
-                            strokeWidth={2.5}
-                          />
-                          {truncate(exec?.errorMessage ?? "Failed", 40)}
-                        </span>
-                      ) : (
-                        <span className="text-muted-foreground">·</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {isConfirmed && exec?.payoutSignature ? (
-                        <a
-                          href={solscanTxUrl(exec.payoutSignature)}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="inline-flex items-center gap-1 rounded-lg border border-border bg-card/60 px-2 py-1 text-[11px] text-foreground transition-colors hover:bg-secondary"
-                          title="Open payout on Solscan"
-                        >
-                          <span>{shortSig(exec.payoutSignature)}</span>
-                          <span aria-hidden="true">↗</span>
-                        </a>
-                      ) : (
-                        <span className="text-muted-foreground">·</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        <FancyButton
-          type="button"
-          variant="primary"
-          size="md"
-          onClick={onRunAnother}
-        >
-          Run another roster
-          <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={2.2} />
-        </FancyButton>
-        <Link
-          href="/history"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-border bg-card/60 px-3 py-2 text-[12.5px] text-foreground transition-colors hover:bg-secondary"
-        >
-          View in history
-          <span aria-hidden="true">→</span>
-        </Link>
-      </div>
-    </motion.div>
+    </WorkbenchPanel>
   );
 }
 
-function shortSig(sig: string): string {
-  if (sig.length <= 10) return sig;
-  return `${sig.slice(0, 4)}…${sig.slice(-4)}`;
+function useOrphans(sender: string | null): OrphanUtxoRecord[] {
+  const [orphans, setOrphans] = React.useState<OrphanUtxoRecord[]>([]);
+  React.useEffect(() => {
+    function load() {
+      setOrphans(loadOrphans(sender, solanaConfig.cluster));
+    }
+    function onStorage(e: StorageEvent) {
+      if (e.key?.startsWith("cloak:orphan-utxo:v1:")) load();
+    }
+    load();
+    window.addEventListener("storage", onStorage);
+    window.addEventListener("cloak:orphans-updated", load);
+    return () => {
+      window.removeEventListener("storage", onStorage);
+      window.removeEventListener("cloak:orphans-updated", load);
+    };
+  }, [sender]);
+  return orphans;
 }
 
-function truncate(s: string, max: number): string {
-  if (s.length <= max) return s;
-  return `${s.slice(0, max - 1)}…`;
-}
-
-function runProgress(rows: Record<number, BatchRowState>): string {
-  const ids = Object.keys(rows);
-  const total = ids.length;
-  if (total === 0) return "";
-  const done = ids.filter((id) => {
-    const s = rows[Number(id)]?.status;
-    return s === "confirmed" || s === "failed";
-  }).length;
-  return `${done}/${total}`;
+function TokenSwitch({
+  value,
+  onChange,
+}: {
+  value: ShieldTokenId;
+  onChange: (id: ShieldTokenId) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1 rounded-lg border border-border/70 bg-secondary/30 p-1">
+      {TOKEN_OPTIONS.map((token) => {
+        const active = value === token.id;
+        const supported = isShieldTokenSupported(token.id);
+        return (
+          <button
+            key={token.id}
+            type="button"
+            disabled={!supported}
+            onClick={() => onChange(token.id)}
+            className={cn(
+              "flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
+              active ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            )}
+          >
+            <token.Logo className="size-3.5" />
+            {token.label}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function PreviewTable({
@@ -732,100 +513,60 @@ function PreviewTable({
   decimals,
   execRows,
   activeRowId,
-  activeStartedAt,
 }: {
   rows: ValidatedRow[];
   tokenId: ShieldTokenId;
   decimals: number;
   execRows: Record<number, BatchRowState>;
   activeRowId: number | null;
-  activeStartedAt: number | null;
 }) {
-  // Tick once a second so the active row's elapsed timer updates without
-  // re-rendering the whole table on every event from the SDK.
-  const [now, setNow] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    if (activeRowId === null || activeStartedAt === null) return;
-    const id = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(id);
-  }, [activeRowId, activeStartedAt]);
-  const activeElapsedMs =
-    activeStartedAt !== null ? Math.max(0, now - activeStartedAt) : 0;
-
   return (
-    <div className="overflow-hidden rounded-xl border border-border">
-      <div className="max-h-[420px] overflow-auto">
-        <table className="w-full text-left text-[12.5px]">
-          <thead className="sticky top-0 z-10 bg-card/95 backdrop-blur">
-            <tr className="border-b border-border text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
-              <th className="px-3 py-2 font-medium">#</th>
-              <th className="px-3 py-2 font-medium">Wallet</th>
-              <th className="px-3 py-2 text-right font-medium">Amount</th>
-              <th className="px-3 py-2 text-right font-medium">Net</th>
-              <th className="px-3 py-2 text-right font-medium">Status</th>
+    <div className="overflow-hidden rounded-lg border border-border/80">
+      <div className="max-h-[460px] overflow-auto">
+        <table className="w-full min-w-[720px] text-left text-sm">
+          <thead className="sticky top-0 z-10 bg-card">
+            <tr className="border-b border-border/80 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              <th className="px-3 py-3 font-medium">Row</th>
+              <th className="px-3 py-3 font-medium">Recipient</th>
+              <th className="px-3 py-3 text-right font-medium">Gross</th>
+              <th className="px-3 py-3 text-right font-medium">Net</th>
+              <th className="px-3 py-3 text-right font-medium">State</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-border font-mono">
-            {rows.map((r) => {
-              const exec = execRows[r.row.rowNumber];
-              const isActive = activeRowId === r.row.rowNumber;
+          <tbody className="divide-y divide-border/70 font-mono">
+            {rows.map((row) => {
+              const exec = execRows[row.row.rowNumber];
+              const active = activeRowId === row.row.rowNumber;
               return (
                 <tr
-                  key={r.row.rowNumber}
+                  key={row.row.rowNumber}
                   className={cn(
-                    "transition-colors",
-                    !r.isValid && "bg-destructive/5",
-                    isActive && "bg-primary/5",
-                    exec?.status === "confirmed" && "bg-primary/[0.04]",
-                    exec?.status === "failed" && "bg-destructive/10",
+                    "bg-background/20",
+                    active && "bg-primary/10",
+                    !row.isValid && "bg-destructive/10",
+                    exec?.status === "confirmed" && "bg-emerald-500/10",
                   )}
                 >
-                  <td className="px-3 py-2 text-[11px] text-muted-foreground">
-                    {r.row.rowNumber}
+                  <td className="px-3 py-3 text-muted-foreground">{row.row.rowNumber}</td>
+                  <td className={cn("px-3 py-3", row.walletIssue && "text-destructive")}>
+                    {row.wallet ? shortAddr(row.wallet) : "-"}
+                    {row.walletIssue ? (
+                      <span className="ml-2 font-sans text-xs">{describeRowIssue(row.walletIssue)}</span>
+                    ) : null}
                   </td>
-                  <td
-                    className={cn(
-                      "px-3 py-2",
-                      r.walletIssue ? "text-destructive" : "text-foreground/90",
-                    )}
-                  >
-                    {r.wallet ? shortAddr(r.wallet) : "·"}
-                    {r.walletIssue && (
-                      <span className="ml-2 font-sans text-[10.5px] uppercase tracking-[0.1em]">
-                        {describeRowIssue(r.walletIssue)}
-                      </span>
-                    )}
+                  <td className={cn("px-3 py-3 text-right", row.amountIssue && "text-destructive")}>
+                    {row.amount || "-"} <span className="text-muted-foreground">{tokenId}</span>
+                    {row.amountIssue ? (
+                      <span className="block font-sans text-xs">{describeRowIssue(row.amountIssue)}</span>
+                    ) : null}
                   </td>
-                  <td
-                    className={cn(
-                      "px-3 py-2 text-right",
-                      r.amountIssue ? "text-destructive" : "text-foreground/90",
-                    )}
-                  >
-                    {r.amount || "·"}{" "}
-                    <span className="text-muted-foreground">{tokenId}</span>
-                    {r.amountIssue && (
-                      <div className="mt-0.5 font-sans text-[10.5px] uppercase tracking-[0.1em]">
-                        {describeRowIssue(r.amountIssue)}
-                      </div>
-                    )}
+                  <td className="px-3 py-3 text-right">
+                    {row.isValid && row.netBaseUnits !== undefined
+                      ? `${formatBaseUnits(row.netBaseUnits.toString(), decimals)} ${tokenId}`
+                      : "-"}
                   </td>
-                  <td className="px-3 py-2 text-right">
-                    {r.isValid && r.netBaseUnits !== undefined ? (
-                      <span className="font-medium text-yellow-600 dark:text-yellow-400">
-                        {formatBaseUnits(r.netBaseUnits.toString(), decimals)}{" "}
-                        <span className="text-muted-foreground">{tokenId}</span>
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">·</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <RowStatus
-                      validRow={r.isValid}
-                      exec={exec}
-                      elapsedMs={isActive ? activeElapsedMs : null}
-                    />
+                  <td className="px-3 py-3 text-right">
+                    <RowStatus validRow={row.isValid} exec={exec} />
                   </td>
                 </tr>
               );
@@ -840,75 +581,226 @@ function PreviewTable({
 function RowStatus({
   validRow,
   exec,
-  elapsedMs,
 }: {
   validRow: boolean;
   exec?: BatchRowState;
-  elapsedMs: number | null;
 }) {
-  if (!validRow) {
-    return (
-      <span className="inline-flex size-5 items-center justify-center rounded-full bg-destructive/15 text-destructive">
-        <HugeiconsIcon icon={Alert02Icon} size={10} strokeWidth={2.5} />
-      </span>
-    );
-  }
+  if (!validRow) return <StatusChip tone="danger" label="Blocked" />;
+  if (!exec || exec.status === "pending") return <StatusChip label="Pending" />;
+  if (exec.status === "confirmed") return <StatusChip tone="success" label="Confirmed" />;
+  if (exec.status === "failed") return <StatusChip tone="danger" label="Failed" title={exec.errorMessage} />;
+  return (
+    <StatusChip
+      tone="primary"
+      label={
+        exec.status === "paying-proof" && exec.proofPercent !== null
+          ? `${Math.round(exec.proofPercent)}%`
+          : phaseShort(exec.status)
+      }
+      title={exec.progress ?? statusLabel(exec.status)}
+    />
+  );
+}
 
-  if (!exec || exec.status === "pending") {
-    return (
-      <span
-        title="Pending"
-        className="inline-flex size-5 items-center justify-center rounded-full border border-border bg-background/40 text-muted-foreground"
-      >
-        <span className="size-1.5 rounded-full bg-muted-foreground/60" />
-      </span>
-    );
-  }
-
-  if (exec.status === "confirmed") {
-    return (
-      <span
-        title="Confirmed"
-        className="inline-flex size-5 items-center justify-center rounded-full bg-primary/20 text-primary"
-      >
-        <HugeiconsIcon icon={CheckmarkCircle01Icon} size={10} strokeWidth={2.5} />
-      </span>
-    );
-  }
-
-  if (exec.status === "failed") {
-    return (
-      <span
-        title={exec.errorMessage ?? "Failed"}
-        className="inline-flex size-5 items-center justify-center rounded-full bg-destructive/20 text-destructive"
-      >
-        <HugeiconsIcon icon={Alert02Icon} size={10} strokeWidth={2.5} />
-      </span>
-    );
-  }
-
-  // proving / submitting: small inline label with %, plus elapsed timer
-  // so the row feels alive during the longer waits.
-  const elapsedSec = elapsedMs !== null ? Math.floor(elapsedMs / 1000) : null;
+function StatusChip({
+  label,
+  tone = "default",
+  title,
+}: {
+  label: string;
+  tone?: "default" | "primary" | "success" | "danger";
+  title?: string;
+}) {
   return (
     <span
-      title={exec.progress ?? statusLabel(exec.status)}
-      className="inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary"
+      title={title}
+      className={cn(
+        "inline-flex h-7 items-center rounded-md border border-border/70 bg-secondary/30 px-2.5 text-xs font-medium",
+        tone === "primary" && "border-primary/30 bg-primary/10 text-primary",
+        tone === "success" && "border-emerald-500/25 bg-emerald-500/10 text-emerald-300",
+        tone === "danger" && "border-destructive/35 bg-destructive/10 text-destructive",
+      )}
     >
-      <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-      {phaseShort(exec.status)}
-      {exec.proofPercent !== null && exec.status === "paying-proof" && (
-        <span className="font-mono">{Math.round(exec.proofPercent)}%</span>
-      )}
-      {elapsedSec !== null && (
-        <span className="font-mono text-primary/70">{elapsedSec}s</span>
-      )}
+      {label}
     </span>
   );
 }
 
-function statusLabel(s: BatchRowStatus): string {
-  switch (s) {
+function Receipt({
+  summary,
+  execRows,
+  rows,
+  tokenId,
+  decimals,
+  onRunAnother,
+}: {
+  summary: NonNullable<ReturnType<typeof useBatchPayroll>["summary"]>;
+  execRows: Record<number, BatchRowState>;
+  rows: ValidatedRow[];
+  tokenId: ShieldTokenId;
+  decimals: number;
+  onRunAnother: () => void;
+}) {
+  const confirmed = Object.values(execRows).filter((r) => r.status === "confirmed");
+  const receiptRows = rows.filter((row) => row.isValid);
+
+  function downloadReceipt() {
+    const header = "row,recipient,status,gross,net,payoutSignature,error\n";
+    const body = receiptRows
+      .map((row) => {
+        const exec = execRows[row.row.rowNumber];
+        return [
+          row.row.rowNumber,
+          row.wallet,
+          exec?.status ?? "pending",
+          `${formatBaseUnits(row.amountBaseUnits?.toString() ?? "0", decimals)} ${tokenId}`,
+          `${formatBaseUnits(row.netBaseUnits?.toString() ?? "0", decimals)} ${tokenId}`,
+          exec?.payoutSignature ?? "",
+          exec?.errorMessage ?? "",
+        ]
+          .map(csvCell)
+          .join(",");
+      })
+      .join("\n");
+    const blob = new Blob([header + body], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `onyx-payroll-receipt-${summary.depositSignature ?? Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="grid gap-4 rounded-lg border border-border/60 bg-secondary/15 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-foreground">
+            Run complete: {summary.confirmed}/{summary.total} confirmed
+          </p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {confirmed.length} payout signatures stored in Ledger. Failed rows remain visible below.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={downloadReceipt}>
+            <HugeiconsIcon icon={Download01Icon} size={14} strokeWidth={2} aria-hidden="true" />
+            Receipt CSV
+          </Button>
+          <FancyButton type="button" variant="neutral" size="md" onClick={onRunAnother}>
+            New roster
+          </FancyButton>
+        </div>
+      </div>
+
+      <div className="grid gap-2 text-sm">
+        <ReceiptLine
+          label="Aggregate shield deposit"
+          value={summary.depositSignature ?? "No deposit signature"}
+          href={summary.depositSignature ? solscanTxUrl(summary.depositSignature) : undefined}
+        />
+        <ReceiptLine label="Started" value={new Date(summary.startedAt).toLocaleString()} />
+        <ReceiptLine label="Finished" value={new Date(summary.finishedAt).toLocaleString()} />
+      </div>
+
+      <div className="overflow-hidden rounded-lg border border-border/60">
+        <table className="w-full min-w-[680px] text-left text-sm">
+          <thead className="bg-secondary/25 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+            <tr>
+              <th className="px-3 py-3 font-medium">Row</th>
+              <th className="px-3 py-3 font-medium">Recipient</th>
+              <th className="px-3 py-3 font-medium">Status</th>
+              <th className="px-3 py-3 font-medium">Payout signature</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/60">
+            {receiptRows.map((row) => {
+              const exec = execRows[row.row.rowNumber];
+              return (
+                <tr key={row.row.rowNumber}>
+                  <td className="px-3 py-3 font-mono text-muted-foreground">{row.row.rowNumber}</td>
+                  <td className="px-3 py-3 font-mono">{shortAddr(row.wallet)}</td>
+                  <td className="px-3 py-3">
+                    <RowStatus validRow exec={exec} />
+                  </td>
+                  <td className="px-3 py-3 font-mono text-muted-foreground">
+                    {exec?.payoutSignature ? (
+                      <a href={solscanTxUrl(exec.payoutSignature)} target="_blank" rel="noreferrer" className="text-primary underline underline-offset-4">
+                        {shortSig(exec.payoutSignature)}
+                      </a>
+                    ) : (
+                      exec?.errorMessage ?? "-"
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function ReceiptLine({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: string;
+  href?: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-border/50 pb-2 last:border-b-0 last:pb-0">
+      <span className="text-muted-foreground">{label}</span>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className="truncate font-mono text-primary underline underline-offset-4">
+          {shortSig(value)}
+        </a>
+      ) : (
+        <span className="truncate font-mono text-foreground">{value}</span>
+      )}
+    </div>
+  );
+}
+
+function csvCell(value: string | number): string {
+  return `"${String(value).replace(/"/g, '""')}"`;
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border border-border/75 bg-secondary/25 p-3">
+      <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{label}</p>
+      <p className="mt-2 truncate font-mono text-sm text-foreground">{value}</p>
+    </div>
+  );
+}
+
+function runLabel(
+  phase: ReturnType<typeof useBatchPayroll>["phase"],
+  rows: Record<number, BatchRowState>,
+  depositPercent: number,
+) {
+  if (phase === "depositing-proof") return `Deposit proof ${Math.round(depositPercent)}%`;
+  if (phase === "depositing-submit") return "Submitting deposit";
+  if (phase === "paying") return `Paying ${runProgress(rows)}`;
+  return "Running";
+}
+
+function runProgress(rows: Record<number, BatchRowState>): string {
+  const ids = Object.keys(rows);
+  if (ids.length === 0) return "0/0";
+  const done = ids.filter((id) => {
+    const status = rows[Number(id)]?.status;
+    return status === "confirmed" || status === "failed";
+  }).length;
+  return `${done}/${ids.length}`;
+}
+
+function statusLabel(status: BatchRowStatus): string {
+  switch (status) {
     case "paying-proof":
       return "Generating payout proof";
     case "paying-submit":
@@ -922,88 +814,23 @@ function statusLabel(s: BatchRowStatus): string {
   }
 }
 
-function phaseShort(s: BatchRowStatus): string {
-  switch (s) {
+function phaseShort(status: BatchRowStatus): string {
+  switch (status) {
     case "paying-proof":
-      return "Payout";
+      return "Proof";
     case "paying-submit":
       return "Settle";
     default:
-      return "";
+      return statusLabel(status);
   }
 }
 
-function TotalsCard({
-  totals,
-  tokenId,
-  tokenDecimals,
-}: {
-  totals: ReturnType<typeof totalsFor>;
-  tokenId: ShieldTokenId;
-  tokenDecimals: number;
-}) {
-  const fmt = (raw: bigint) => formatBaseUnits(raw.toString(), tokenDecimals);
-  const fmtSol = (lamports: bigint) => formatBaseUnits(lamports.toString(), 9);
-  return (
-    <div className="grid gap-2 rounded-xl border border-border bg-background/40 p-4 text-[13px] sm:grid-cols-2">
-      <Row label="Recipients" value={`${totals.validCount}`} />
-      <Row label="Gross total" value={`${fmt(totals.totalBaseUnits)} ${tokenId}`} />
-      <Row
-        label="Variable fee"
-        hint="0.30%"
-        value={`${fmt(totals.totalVariableFeeBaseUnits)} ${tokenId}`}
-      />
-      <Row
-        label="Network fee"
-        hint={`${totals.validCount} × 0.005 SOL`}
-        value={`${fmtSol(totals.totalFixedFeeLamports)} SOL`}
-      />
-      <Row
-        label="Recipients receive"
-        value={`${fmt(totals.totalNetBaseUnits)} ${tokenId}`}
-        accent
-      />
-    </div>
-  );
+function shortAddr(value: string): string {
+  if (value.length <= 14) return value;
+  return `${value.slice(0, 6)}...${value.slice(-6)}`;
 }
 
-function Row({
-  label,
-  hint,
-  value,
-  accent,
-}: {
-  label: string;
-  hint?: string;
-  value: string;
-  accent?: boolean;
-}) {
-  return (
-    <div className="flex items-baseline justify-between gap-3 sm:contents">
-      <dt className="flex items-center gap-2 text-muted-foreground sm:py-1">
-        <span>{label}</span>
-        {hint && (
-          <span className="font-mono text-[11px] text-muted-foreground/70">
-            {hint}
-          </span>
-        )}
-      </dt>
-      <dd
-        className={cn(
-          "font-mono sm:py-1 sm:text-right",
-          accent
-            ? "font-medium text-yellow-600 dark:text-yellow-400"
-            : "text-foreground/90",
-        )}
-      >
-        {value}
-      </dd>
-    </div>
-  );
-}
-
-function shortAddr(s: string): string {
-  if (!s) return "";
-  if (s.length <= 12) return s;
-  return `${s.slice(0, 6)}…${s.slice(-6)}`;
+function shortSig(value: string): string {
+  if (value.length <= 12) return value;
+  return `${value.slice(0, 6)}...${value.slice(-6)}`;
 }
