@@ -102,20 +102,20 @@ function PayrollWidget() {
   );
 }
 
-function ComplianceWidget() {
+function AuditAccessWidget() {
   return (
     <div className="mt-auto pt-6">
       <div className="relative overflow-hidden rounded-2xl border border-primary/20 bg-gradient-to-br from-primary/[0.08] to-primary/[0.02] p-4 backdrop-blur-md">
         <div className="absolute -right-4 -top-4 size-24 rounded-full bg-primary/20 blur-2xl" />
         <div className="relative flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/60">Viewing key</span>
+          <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary/60">Audit token</span>
           <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[9px] font-semibold text-emerald-400">
             <span className="size-1.5 animate-pulse rounded-full bg-emerald-400 shadow-[0_0_4px_currentColor]" />
             Active
           </span>
         </div>
         <div className="relative mt-3 rounded-lg border border-primary/10 bg-black/20 p-2.5 font-mono text-[11px] text-primary/70 shadow-inner">
-          vk_7xK2…mR4p
+          onyx_audit_v2...
         </div>
         <div className="mt-3 flex items-center gap-2 text-[10px] font-medium text-primary/40">
           <HugeiconsIcon icon={CalendarCheckIn01Icon} size={12} />
@@ -178,14 +178,14 @@ const PRIMARY: PrimaryDef[] = [
     widget: <PayrollWidget />,
   },
   {
-    eyebrow: "03 · Compliance",
+    eyebrow: "03 · Audit Access",
     title: "Auditors see\nwhat you choose.",
-    body: "Issue a scoped viewing key tied to a date range. Your auditor gets a structured CSV report. The public ledger sees nothing.",
+    body: "Create a scoped audit access token tied to a date range. Your auditor gets a structured CSV report. The public ledger sees nothing.",
     icon: KeyIcon,
     stat: { value: "0", label: "on-chain leaks" },
-    tags: ["Scoped keys", "Revocable"],
+    tags: ["Scoped access", "Revocable"],
     accent: true,
-    widget: <ComplianceWidget />,
+    widget: <AuditAccessWidget />,
   },
 ];
 
@@ -491,4 +491,3 @@ export function IntegrationsBento() {
     </section>
   );
 }
-
