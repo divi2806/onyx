@@ -34,8 +34,8 @@ import {
   type ShieldTokenId,
 } from "@/lib/cloak/tokens";
 import { useFastSend } from "@/lib/cloak/use-fast-send";
-import { solanaConfig } from "@/lib/solana/config";
 import { solscanTxUrl } from "@/lib/solana/explorer";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { cn } from "@/lib/utils";
 
 const TOKENS = [
@@ -67,6 +67,8 @@ export default function PayPage() {
   } | null>(null);
 
   const wallet = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const fastSend = useFastSend();
 
   const amountError = React.useMemo(
@@ -77,8 +79,11 @@ export default function PayPage() {
     () => validateAddress(recipient),
     [recipient],
   );
-  const shieldToken = React.useMemo(() => getShieldToken(token), [token]);
-  const tokenSupported = isShieldTokenSupported(token);
+  const shieldToken = React.useMemo(
+    () => getShieldToken(token, cluster),
+    [cluster, token],
+  );
+  const tokenSupported = isShieldTokenSupported(token, cluster);
   const amountValid = !amountError && amount.trim() !== "";
   const addressValid = !addressError && recipient.trim() !== "";
   const submitting = isSubmitting(fastSend.status);
@@ -115,9 +120,9 @@ export default function PayPage() {
       });
 
       if (wallet.publicKey) {
-        appendPayment(wallet.publicKey.toBase58(), solanaConfig.cluster, {
+        appendPayment(wallet.publicKey.toBase58(), cluster, {
           id: result.depositSignature,
-          cluster: solanaConfig.cluster,
+          cluster,
           sender: wallet.publicKey.toBase58(),
           recipient: recipientPubkey.toBase58(),
           token,
@@ -142,7 +147,7 @@ export default function PayPage() {
       title="Private transfer workbench"
       description="Build a single-recipient payment, review the fee path, then execute the deposit and payout proofs without exposing counterparty details on-chain."
       stats={[
-        { label: "Cluster", value: solanaConfig.cluster, tone: solanaConfig.cluster === "devnet" ? "warning" : "default" },
+        { label: "Cluster", value: cluster, tone: cluster === "devnet" ? "warning" : "default" },
         { label: "Asset", value: token, hint: tokenSupported ? "available" : "unsupported", tone: tokenSupported ? "primary" : "danger" },
         { label: "Recipient net", value: recipientReceives > 0 ? `${formatAmount(recipientReceives)} ${token}` : "0.00", hint: "estimated after fees" },
         { label: "Status", value: phaseLabel(fastSend.status), tone: fastSend.status === "error" ? "danger" : fastSend.status === "success" ? "success" : "default" },
@@ -261,7 +266,7 @@ export default function PayPage() {
                       key={option.id}
                       type="button"
                       onClick={() => setToken(option.id)}
-                      disabled={!isShieldTokenSupported(option.id)}
+                      disabled={!isShieldTokenSupported(option.id, cluster)}
                       className={cn(
                         "flex h-11 items-center justify-center gap-2 rounded-lg border border-border/80 bg-secondary/35 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
                         token === option.id && "border-primary/40 bg-primary/12 text-primary",
@@ -276,7 +281,7 @@ export default function PayPage() {
             </div>
 
             {!tokenSupported ? (
-              <InlineNotice tone="danger">This token is not available on {solanaConfig.cluster}.</InlineNotice>
+              <InlineNotice tone="danger">This token is not available on {cluster}.</InlineNotice>
             ) : null}
 
             {fastSend.status === "error" && fastSend.error ? (
@@ -367,9 +372,10 @@ function SuccessCard({
 }
 
 function TxLink({ label, signature }: { label: string; signature: string | null }) {
+  const { config } = useSolanaNetwork();
   return (
     <a
-      href={signature ? solscanTxUrl(signature) : undefined}
+      href={signature ? solscanTxUrl(signature, config.cluster, config.rpcUrl) : undefined}
       target="_blank"
       rel="noreferrer"
       className={cn(
