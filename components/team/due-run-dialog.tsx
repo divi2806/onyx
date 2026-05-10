@@ -25,8 +25,8 @@ import {
 } from "@/lib/cloak/payment-history";
 import { toBaseUnits } from "@/lib/cloak/tokens";
 import { useBatchPayroll } from "@/lib/cloak/use-batch-payroll";
-import { solanaConfig } from "@/lib/solana/config";
 import { solscanTxUrl } from "@/lib/solana/explorer";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { markMemberPaid } from "@/lib/team/storage";
 import type { DueGroup } from "@/lib/team/use-due-members";
 import { cn } from "@/lib/utils";
@@ -75,6 +75,8 @@ function DueRunBody({
   onClose: () => void;
 }) {
   const wallet = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const batch = useBatchPayroll();
 
   // Snapshot the groups at open time. Once a payment succeeds, markMemberPaid
@@ -129,7 +131,7 @@ function DueRunBody({
       const row = idToRow.get(result.id);
       if (!row) continue;
 
-      markMemberPaid(solanaConfig.cluster, row.memberId);
+      markMemberPaid(cluster, row.memberId);
 
       const variableFee =
         (row.amountBaseUnits * VARIABLE_FEE_BPS) / 10_000n;
@@ -138,9 +140,9 @@ function DueRunBody({
       const net = row.amountBaseUnits - variableFee - fixedDeducted;
       const netSafe = net < 0n ? 0n : net;
 
-      appendPayment(sender, solanaConfig.cluster, {
+      appendPayment(sender, cluster, {
         id: result.payoutSig,
-        cluster: solanaConfig.cluster,
+        cluster,
         sender,
         recipient: row.recipient,
         token: group.token.id,
@@ -167,7 +169,7 @@ function DueRunBody({
     }));
     setActiveMint(null);
     batch.reset();
-  }, [batch, wallet.publicKey]);
+  }, [batch, cluster, wallet.publicKey]);
 
   const runAll = React.useCallback(async () => {
     if (!wallet.publicKey) return;
@@ -372,6 +374,7 @@ function GroupCard({
   disabled: boolean;
   onRun: () => void;
 }) {
+  const { config } = useSolanaNetwork();
   const totalRaw = group.members.reduce((acc, m) => {
     if (!m.schedule) return acc;
     try {
@@ -467,7 +470,7 @@ function GroupCard({
         <p className="text-[11px] text-muted-foreground">
           Batch deposit:{" "}
           <a
-            href={solscanTxUrl(outcome.depositSignature)}
+            href={solscanTxUrl(outcome.depositSignature, config.cluster, config.rpcUrl)}
             target="_blank"
             rel="noreferrer"
             className="font-mono text-foreground/80 underline underline-offset-2"
