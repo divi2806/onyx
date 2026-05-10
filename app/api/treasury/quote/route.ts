@@ -2,7 +2,7 @@ import { PublicKey } from "@solana/web3.js";
 import { NextResponse } from "next/server";
 
 import { getShieldToken, getShieldTokenByMint } from "@/lib/cloak/tokens";
-import { solanaConfig } from "@/lib/solana/config";
+import { solanaConfig, type SolanaCluster } from "@/lib/solana/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +12,7 @@ type QuoteBody = {
   outputMint?: unknown;
   amount?: unknown;
   slippageBps?: unknown;
+  cluster?: unknown;
 };
 
 type NormalizedQuote = {
@@ -41,9 +42,10 @@ export async function POST(req: Request) {
     const outputMint = requirePubkey(body.outputMint, "outputMint");
     const amount = requirePositiveInteger(body.amount, "amount");
     const slippageBps = requireBps(body.slippageBps);
+    const cluster = requireCluster(body.cluster);
 
-    const inputToken = getShieldToken("SOL");
-    const outputToken = getShieldTokenByMint(outputMint.toBase58());
+    const inputToken = getShieldToken("SOL", cluster);
+    const outputToken = getShieldTokenByMint(outputMint.toBase58(), cluster);
     if (!inputToken || inputMint.toBase58() !== inputToken.mint.toBase58()) {
       return NextResponse.json(
         { error: "Treasury rebalance currently quotes shielded SOL as the source." },
@@ -52,7 +54,7 @@ export async function POST(req: Request) {
     }
     if (!outputToken || outputToken.id === "SOL") {
       return NextResponse.json(
-        { error: `Unsupported treasury output on ${solanaConfig.cluster}.` },
+        { error: `Unsupported treasury output on ${cluster}.` },
         { status: 400 },
       );
     }
@@ -100,6 +102,11 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+}
+
+function requireCluster(value: unknown): SolanaCluster {
+  if (value === "mainnet-beta" || value === "devnet") return value;
+  return solanaConfig.cluster;
 }
 
 function quoteEndpoints(): string[] {
