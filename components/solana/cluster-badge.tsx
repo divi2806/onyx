@@ -1,50 +1,59 @@
 "use client";
 
-import { solanaConfig } from "@/lib/solana/config";
+import { ArrowReloadHorizontalIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+
+import { Button } from "@/components/ui/button";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { cn } from "@/lib/utils";
 
 const STYLES: Record<
-  typeof solanaConfig.cluster,
-  { label: string; dot: string; chip: string } | null
+  "mainnet-beta" | "devnet",
+  { label: string; dot: string; chip: string }
 > = {
-  "mainnet-beta": null,
+  "mainnet-beta": {
+    label: "Mainnet",
+    dot: "bg-emerald-400",
+    chip: "border-emerald-400/25 bg-emerald-400/10 text-emerald-300",
+  },
   devnet: {
     label: "Devnet",
     dot: "bg-amber-400",
     chip: "border-amber-400/25 bg-amber-400/10 text-amber-300",
   },
-  testnet: {
-    label: "Testnet",
-    dot: "bg-sky-400",
-    chip: "border-sky-400/25 bg-sky-400/10 text-sky-400/80",
-  },
-  localnet: {
-    label: "Localnet",
-    dot: "bg-violet-400",
-    chip: "border-violet-400/25 bg-violet-400/10 text-violet-400/80",
-  },
 };
 
 export function ClusterBadge({ className }: { className?: string }) {
-  const style = STYLES[solanaConfig.cluster];
-  if (!style) return null;
+  const { config, switchCluster } = useSolanaNetwork();
+  const style = STYLES[config.cluster];
+  const nextCluster = config.cluster === "devnet" ? "mainnet-beta" : "devnet";
+  const nextLabel = STYLES[nextCluster].label;
 
   return (
-    <span
+    <Button
+      type="button"
+      variant="outline"
+      size="lg"
+      onClick={() => switchCluster(nextCluster)}
       className={cn(
-        "inline-flex h-10 items-center gap-1.5 rounded-lg border px-3",
-        "text-[10.5px] font-semibold tracking-wide uppercase",
+        "gap-2 border px-3 text-[10.5px] font-semibold uppercase tracking-wide",
         style.chip,
         className,
       )}
-      title={`Connected to ${style.label}`}
-      aria-label={`Cluster: ${style.label}`}
+      aria-label={`Network: ${style.label}. Switch to ${nextLabel}.`}
+      title={`Connected to ${style.label}. Click to switch to ${nextLabel}.`}
     >
       <span
         aria-hidden="true"
         className={cn("size-1.5 rounded-full animate-pulse", style.dot)}
       />
       {style.label}
-    </span>
+      <HugeiconsIcon
+        icon={ArrowReloadHorizontalIcon}
+        size={13}
+        strokeWidth={2}
+        aria-hidden="true"
+      />
+    </Button>
   );
 }
