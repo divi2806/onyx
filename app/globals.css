@@ -99,6 +99,7 @@
   --brand: oklch(0.68 0.24 285);
   --brand-soft: oklch(0.68 0.24 285 / 12%);
   --brand-foreground: oklch(0.97 0.003 285);
+  --primary-rgb: 164, 86, 255;
 }
 
 @layer base {
@@ -117,17 +118,12 @@
 
   body {
     @apply bg-background text-foreground;
-    /* Subtle radial gradient at top — adds depth without noise */
-    background-image: radial-gradient(
-      ellipse 80% 50% at 50% -10%,
-      oklch(0.68 0.24 285 / 7%) 0%,
-      transparent 70%
-    );
+    background-image: linear-gradient(180deg, oklch(0.095 0.010 280), var(--background) 260px);
     background-attachment: fixed;
   }
 
   h1, h2, h3, h4, h5, h6 {
-    letter-spacing: -0.025em;
+    letter-spacing: 0em;
     font-weight: 700;
   }
 
@@ -150,6 +146,17 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: oklch(1 0 0 / 20%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
   }
 }
 
@@ -176,17 +183,11 @@
   }
 
   .wallet-adapter-button.wallet-adapter-button-trigger {
-    background: linear-gradient(
-      to bottom,
-      oklch(0.70 0.24 285),
-      oklch(0.64 0.24 285)
-    );
+    background: var(--primary);
     color: var(--primary-foreground);
     border: 1px solid oklch(0.68 0.24 285 / 40%);
     font-weight: 700;
-    box-shadow:
-      0 0 0 1px oklch(0.82 0.20 285 / 18%) inset,
-      0 6px 20px -4px oklch(0.68 0.24 285 / 45%);
+    box-shadow: none;
   }
 
   .wallet-adapter-button:not([disabled]):focus-visible {
@@ -195,11 +196,7 @@
   }
 
   .wallet-adapter-button:not([disabled]):hover {
-    background: linear-gradient(
-      to bottom,
-      oklch(0.72 0.24 285),
-      oklch(0.66 0.24 285)
-    );
+    background: oklch(0.72 0.24 285);
     color: var(--primary-foreground);
     border-color: oklch(0.68 0.24 285 / 60%);
   }
