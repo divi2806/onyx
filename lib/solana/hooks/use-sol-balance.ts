@@ -12,7 +12,11 @@ type Failure = { status: "error"; lamports: null; error: Error };
 
 export type SolBalanceState = Idle | Loading | Success | Failure;
 
-export function useSolBalance(addressString: string | null | undefined) {
+const IDLE_STATE: Idle = { status: "idle", lamports: null, error: null };
+
+export function useSolBalance(
+  addressString: string | null | undefined,
+): SolBalanceState {
   const [state, setState] = useState<SolBalanceState>({
     status: "idle",
     lamports: null,
@@ -21,16 +25,18 @@ export function useSolBalance(addressString: string | null | undefined) {
 
   useEffect(() => {
     if (!addressString) {
-      setState({ status: "idle", lamports: null, error: null });
       return;
     }
 
     let cancelled = false;
-    setState((prev) => ({
-      status: "loading",
-      lamports: prev.status === "success" ? prev.lamports : null,
-      error: null,
-    }));
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setState((prev) => ({
+        status: "loading",
+        lamports: prev.status === "success" ? prev.lamports : null,
+        error: null,
+      }));
+    });
 
     (async () => {
       try {
@@ -54,5 +60,5 @@ export function useSolBalance(addressString: string | null | undefined) {
     };
   }, [addressString]);
 
-  return state;
+  return addressString ? state : IDLE_STATE;
 }
