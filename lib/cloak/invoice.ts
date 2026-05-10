@@ -11,6 +11,8 @@ export type Invoice = {
   mint: string;        // token mint base58
   symbol: ShieldTokenId;
   memo?: string;
+  payerMemo?: string;
+  expiresAt?: number;
   createdAt: number;
   paidAt?: number;
   payerSignature?: string;
@@ -24,6 +26,8 @@ export type ClaimPayload = {
   s: ShieldTokenId;    // symbol
   id: string;          // invoice id
   memo?: string;
+  pm?: string;         // payer-facing memo / settlement note
+  exp?: number;        // expiry timestamp in ms
 };
 
 function storageKey(cluster: SolanaCluster, wallet: string): string {
@@ -99,7 +103,14 @@ export function decodeClaimPayload(token: string): ClaimPayload | null {
 export function createInvoice(
   cluster: SolanaCluster,
   wallet: string,
-  draft: { amount: string; mint: string; symbol: ShieldTokenId; memo?: string },
+  draft: {
+    amount: string;
+    mint: string;
+    symbol: ShieldTokenId;
+    memo?: string;
+    payerMemo?: string;
+    expiresAt?: number;
+  },
   baseUrl: string,
 ): Invoice {
   const id = newId();
@@ -110,6 +121,8 @@ export function createInvoice(
     s: draft.symbol,
     id,
     ...(draft.memo ? { memo: draft.memo } : {}),
+    ...(draft.payerMemo ? { pm: draft.payerMemo } : {}),
+    ...(draft.expiresAt ? { exp: draft.expiresAt } : {}),
   };
   const claimLink = `${baseUrl}/claim?v=${encodeClaimPayload(payload)}`;
   const invoice: Invoice = {
@@ -119,6 +132,8 @@ export function createInvoice(
     mint: draft.mint,
     symbol: draft.symbol,
     memo: draft.memo,
+    payerMemo: draft.payerMemo,
+    expiresAt: draft.expiresAt,
     createdAt: Date.now(),
     claimLink,
   };
@@ -152,6 +167,8 @@ function isInvoice(v: unknown): v is Invoice {
     typeof r.mint === "string" &&
     typeof r.symbol === "string" &&
     typeof r.createdAt === "number" &&
-    typeof r.claimLink === "string"
+    typeof r.claimLink === "string" &&
+    (r.payerMemo === undefined || typeof r.payerMemo === "string") &&
+    (r.expiresAt === undefined || typeof r.expiresAt === "number")
   );
 }
