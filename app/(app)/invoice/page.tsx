@@ -5,19 +5,34 @@ import {
   Copy01Icon,
   CopyLinkIcon,
   InvoiceIcon,
-  Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { motion } from "motion/react";
 import * as React from "react";
 
 import { SolanaLogo, UsdcLogo, UsdtLogo } from "@/components/logos";
+import { Button } from "@/components/ui/button";
 import { FancyButton } from "@/components/ui/fancy-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createInvoice, loadInvoices, type Invoice } from "@/lib/cloak/invoice";
-import { getShieldToken, isShieldTokenSupported, type ShieldTokenId } from "@/lib/cloak/tokens";
+import {
+  EmptyWorkbench,
+  FieldStack,
+  InlineNotice,
+  WorkbenchPage,
+  WorkbenchPanel,
+} from "@/components/ui/workbench";
+import {
+  createInvoice,
+  invoiceStorageEvent,
+  loadInvoices,
+  type Invoice,
+} from "@/lib/cloak/invoice";
+import {
+  getShieldToken,
+  isShieldTokenSupported,
+  type ShieldTokenId,
+} from "@/lib/cloak/tokens";
 import { solanaConfig } from "@/lib/solana/config";
 import { cn } from "@/lib/utils";
 
@@ -25,311 +40,324 @@ const TOKENS = [
   { id: "SOL" as ShieldTokenId, label: "SOL", Logo: SolanaLogo },
   { id: "USDC" as ShieldTokenId, label: "USDC", Logo: UsdcLogo },
   { id: "USDT" as ShieldTokenId, label: "USDT", Logo: UsdtLogo },
-] as const;
+];
 
+const EMPTY: Invoice[] = [];
 
 export default function InvoicePage() {
   const { publicKey } = useWallet();
   const wallet = publicKey?.toBase58() ?? "";
+  const invoices = useInvoices(wallet);
 
   const [token, setToken] = React.useState<ShieldTokenId>("USDC");
   const [amount, setAmount] = React.useState("");
   const [memo, setMemo] = React.useState("");
-  const [creating, setCreating] = React.useState(false);
+  const [payerMemo, setPayerMemo] = React.useState("");
+  const [expiresOn, setExpiresOn] = React.useState("");
   const [lastInvoice, setLastInvoice] = React.useState<Invoice | null>(null);
-  const [copied, setCopied] = React.useState(false);
-  const [invoices, setInvoices] = React.useState<Invoice[]>([]);
+  const [copied, setCopied] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    if (wallet) {
-      setInvoices(loadInvoices(solanaConfig.cluster, wallet));
-    }
-  }, [wallet, lastInvoice]);
-
-  const validAmount = /^\d+(\.\d+)?$/.test(amount.trim()) && Number(amount.trim()) > 0;
   const supported = isShieldTokenSupported(token);
+  const validAmount = /^\d+(\.\d+)?$/.test(amount.trim()) && Number(amount.trim()) > 0;
   const canCreate = !!wallet && validAmount && supported;
 
   function handleCreate() {
     if (!canCreate) return;
-    setCreating(true);
-    try {
-      const baseUrl =
-        typeof window !== "undefined" ? window.location.origin : "https://onyx-red.vercel.app/";
-      const inv = createInvoice(
-        solanaConfig.cluster,
-        wallet,
-        {
-          amount: amount.trim(),
-          mint: getShieldToken(token)!.mint.toBase58(),
-          symbol: token,
-          memo: memo.trim() || undefined,
-        },
-        baseUrl,
-      );
-      setLastInvoice(inv);
-      setAmount("");
-      setMemo("");
-    } finally {
-      setCreating(false);
-    }
+    const baseUrl =
+      typeof window !== "undefined" ? window.location.origin : "https://onyx-red.vercel.app";
+    const invoice = createInvoice(
+      solanaConfig.cluster,
+      wallet,
+      {
+        amount: amount.trim(),
+        mint: getShieldToken(token)!.mint.toBase58(),
+        symbol: token,
+        memo: memo.trim() || undefined,
+        payerMemo: payerMemo.trim() || undefined,
+        expiresAt: expiresOn ? new Date(`${expiresOn}T23:59:59`).getTime() : undefined,
+      },
+      baseUrl,
+    );
+    setLastInvoice(invoice);
+    setAmount("");
+    setMemo("");
+    setPayerMemo("");
+    setExpiresOn("");
   }
 
-  async function handleCopy(text: string) {
+  async function handleCopy(text: string, id: string) {
     try {
       await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied(id);
+      setTimeout(() => setCopied(null), 1600);
     } catch {
       // clipboard blocked
     }
   }
 
   return (
-    <div className="mx-auto w-full max-w-screen-xl px-5 relative">
-      {/* Background radial glow */}
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 bg-[radial-gradient(ellipse_at_top,rgba(var(--primary-rgb),0.12),transparent_70%)]" aria-hidden />
-
-      {/* Page title */}
-      <div className="py-12 flex flex-col items-center text-center relative z-10">
-        <span className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.2em] text-primary shadow-sm backdrop-blur-md">
-          <span className="size-1.5 rounded-full bg-primary shadow-[0_0_6px_currentColor]" />
-          Client Billing
-        </span>
-        <h1 className="mt-6 text-[42px] font-black leading-[1.05] tracking-[-0.04em] text-transparent bg-clip-text bg-gradient-to-br from-white to-white/40 sm:text-[54px]">
-          Payment Links
-        </h1>
-      </div>
-
-      <div className="mx-auto grid max-w-[64rem] gap-6 pb-24 lg:grid-cols-[1.2fr_1fr] lg:items-start relative z-10">
-        {/* Create invoice */}
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className="relative flex flex-col gap-7 overflow-hidden rounded-[2rem] border border-white/[0.08] bg-gradient-to-br from-white/[0.04] to-transparent p-8 shadow-2xl backdrop-blur-2xl"
-        >
-          <div className="flex items-start gap-4">
-            <div className="grid size-12 shrink-0 place-items-center rounded-2xl border border-primary/30 bg-primary/20 text-primary shadow-[0_0_15px_rgba(var(--primary-rgb),0.2)]">
-              <HugeiconsIcon icon={InvoiceIcon} size={20} strokeWidth={2} />
-            </div>
-            <div className="mt-1">
-              <h2 className="text-[18px] font-bold tracking-tight text-white">
-                Create a payment request
-              </h2>
-              <p className="mt-1.5 text-[14px] leading-relaxed text-white/50">
-                Your wallet address is embedded in the link. The payer routes funds through
-                the shielded pool — no direct on-chain trace to you.
-              </p>
-            </div>
+    <WorkbenchPage
+      kicker="Invoice module"
+      title="Payment-link desk"
+      description="Create claim links that ask a payer to send through the same shielded deposit and payout route."
+      stats={[
+        { label: "Invoices", value: invoices.length, hint: "stored locally" },
+        { label: "Unpaid", value: invoices.filter((invoice) => !invoice.paidAt).length },
+        { label: "Token", value: token, tone: supported ? "primary" : "danger" },
+        { label: "Wallet", value: wallet ? "connected" : "missing", tone: wallet ? "success" : "warning" },
+      ]}
+      aside={
+        <WorkbenchPanel title="Link payload" eyebrow="Claim">
+          <div className="grid gap-3 text-sm text-muted-foreground">
+            <p>The link contains recipient wallet, amount, mint, expiry, and payer instructions.</p>
+            <p>The payer only needs a Solana wallet. The claim page handles the Cloak route.</p>
           </div>
+        </WorkbenchPanel>
+      }
+    >
+      <div className="grid gap-4">
+        <WorkbenchPanel title="Create request" eyebrow="Builder">
+          <div className="grid gap-5">
+            {!wallet ? <InlineNotice tone="warning">Connect your wallet to create an invoice link.</InlineNotice> : null}
+            {!supported ? <InlineNotice tone="danger">{token} is unavailable on {solanaConfig.cluster}.</InlineNotice> : null}
 
-          {/* Token selector */}
-          <div className="flex flex-col gap-2.5">
-            <Label className="text-white/60 ml-1">Token</Label>
-            <div className="flex items-center gap-1.5 rounded-2xl border border-white/[0.06] bg-white/[0.02] p-1.5 shadow-inner w-max">
-              {TOKENS.map(({ id, label, Logo }) => {
-                const active = token === id;
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => setToken(id)}
-                    className={cn(
-                      "relative flex h-full items-center gap-1.5 rounded-xl px-4 py-2.5 text-[13px] font-bold transition-colors",
-                      active
-                        ? "text-white drop-shadow-md"
-                        : "text-white/40 hover:text-white/80",
-                    )}
-                  >
-                    {active && (
-                      <motion.span
-                        layoutId="invoice-token-active"
-                        aria-hidden="true"
-                        className="absolute inset-0 -z-0 rounded-xl bg-white/[0.08] border border-white/[0.1] shadow-sm backdrop-blur-md"
-                        transition={{
-                          type: "spring",
-                          stiffness: 400,
-                          damping: 30,
-                        }}
-                      />
-                    )}
-                    <span className="relative z-10 flex items-center gap-2">
-                      <Logo className="size-4 drop-shadow-sm" />
-                      {label}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Amount */}
-          <div className="flex flex-col gap-2.5">
-            <Label htmlFor="inv-amount" className="text-white/60 ml-1">Amount</Label>
-            <Input
-              id="inv-amount"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="font-mono text-[16px] bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner"
-            />
-          </div>
-
-          {/* Memo */}
-          <div className="flex flex-col gap-2.5">
-            <Label htmlFor="inv-memo" hint="Optional" className="text-white/60 ml-1">
-              Memo
-            </Label>
-            <Input
-              id="inv-memo"
-              placeholder="e.g. Consulting · May 2026"
-              value={memo}
-              onChange={(e) => setMemo(e.target.value)}
-              className="text-[14px] bg-white/[0.03] border-white/[0.06] rounded-2xl h-14 px-4 focus:border-primary/50 focus:bg-white/[0.05] transition-all shadow-inner"
-            />
-          </div>
-
-          {!wallet && (
-            <p className="text-[13px] text-white/50 font-medium ml-1">
-              Connect your wallet to create an invoice.
-            </p>
-          )}
-
-          {lastInvoice && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex flex-col gap-3 rounded-[1.5rem] border border-primary/40 bg-primary/10 p-5 shadow-[0_0_30px_rgba(var(--primary-rgb),0.15)] backdrop-blur-md mt-2"
-            >
-              <p className="text-[13px] font-bold text-primary drop-shadow-[0_0_4px_rgba(var(--primary-rgb),0.5)]">
-                Invoice ready — share this link:
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-xl border border-white/[0.1] bg-white/[0.05] px-4 py-3 font-mono text-[13px] font-bold text-white shadow-inner">
-                  {lastInvoice.claimLink}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => handleCopy(lastInvoice.claimLink)}
-                  className="shrink-0 flex items-center justify-center size-12 rounded-xl bg-white/[0.05] border border-white/[0.1] text-white/60 transition-all hover:bg-primary/20 hover:text-primary hover:border-primary/40"
-                  aria-label="Copy claim link"
-                >
-                  <HugeiconsIcon
-                    icon={copied ? CheckmarkCircle01Icon : Copy01Icon}
-                    size={18}
-                    strokeWidth={2}
-                    className={copied ? "text-primary drop-shadow-[0_0_6px_currentColor]" : ""}
-                  />
-                </button>
-              </div>
-              <p className="text-[12px] text-white/60 font-medium ml-1">
-                {lastInvoice.amount} {lastInvoice.symbol}
-                {lastInvoice.memo ? ` · ${lastInvoice.memo}` : ""}
-              </p>
-            </motion.div>
-          )}
-
-          <FancyButton
-            variant="primary"
-            size="lg"
-            className="self-start mt-2 h-14 rounded-2xl text-[15px] shadow-[0_0_20px_rgba(var(--primary-rgb),0.3)] hover:shadow-[0_0_30px_rgba(var(--primary-rgb),0.5)] transition-shadow px-8"
-            onClick={handleCreate}
-            disabled={!canCreate || creating}
-          >
-            {creating ? (
-              <>
-                <HugeiconsIcon
-                  icon={Loading03Icon}
-                  size={16}
-                  strokeWidth={2.2}
-                  className="animate-spin"
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_260px]">
+              <FieldStack>
+                <Label htmlFor="invoiceAmount" required>Amount</Label>
+                <Input
+                  id="invoiceAmount"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  placeholder="0.00"
+                  inputMode="decimal"
+                  className="font-mono"
+                  aria-invalid={amount && !validAmount ? "true" : undefined}
                 />
-                Creating…
-              </>
-            ) : (
-              <>
-                Create invoice link
-                <HugeiconsIcon icon={CopyLinkIcon} size={16} strokeWidth={2.2} />
-              </>
-            )}
-          </FancyButton>
-        </motion.section>
+                <p className="text-xs text-muted-foreground">The payer sends this exact gross amount.</p>
+              </FieldStack>
+              <FieldStack>
+                <Label>Token</Label>
+                <TokenSwitch value={token} onChange={setToken} />
+              </FieldStack>
+            </div>
 
-        {/* Invoice history */}
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
-          className="rounded-[2rem] border border-white/[0.06] bg-gradient-to-br from-white/[0.02] to-transparent p-6 sm:p-8 lg:sticky lg:top-24 shadow-xl backdrop-blur-xl"
-        >
-          <div className="flex items-center justify-between">
-            <h3 className="text-[16px] font-bold tracking-tight text-white">
-              Your invoices
-            </h3>
-            <span className="font-mono text-[12px] font-bold text-white/40">
-              {invoices.length} total
-            </span>
+            <FieldStack>
+              <Label htmlFor="invoiceMemo">Memo</Label>
+              <Input
+                id="invoiceMemo"
+                value={memo}
+                onChange={(e) => setMemo(e.target.value)}
+                placeholder="Consulting, May retainer, invoice number"
+                maxLength={160}
+              />
+            </FieldStack>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldStack>
+                <Label htmlFor="payerMemo">Payer instructions</Label>
+                <Input
+                  id="payerMemo"
+                  value={payerMemo}
+                  onChange={(e) => setPayerMemo(e.target.value)}
+                  placeholder="Works for any Solana wallet; no Cloak setup required"
+                  maxLength={160}
+                />
+              </FieldStack>
+              <FieldStack>
+                <Label htmlFor="invoiceExpires">Expires</Label>
+                <Input
+                  id="invoiceExpires"
+                  type="date"
+                  value={expiresOn}
+                  onChange={(e) => setExpiresOn(e.target.value)}
+                />
+              </FieldStack>
+            </div>
+
+            {lastInvoice ? (
+              <InlineNotice
+                tone="success"
+                title="Invoice link ready"
+                action={
+                  <Button type="button" variant="outline" onClick={() => handleCopy(lastInvoice.claimLink, lastInvoice.id)}>
+                    <HugeiconsIcon icon={copied === lastInvoice.id ? CheckmarkCircle01Icon : Copy01Icon} size={14} strokeWidth={2} aria-hidden="true" />
+                    Copy
+                  </Button>
+                }
+              >
+                <code className="block truncate font-mono text-xs text-foreground">{lastInvoice.claimLink}</code>
+                <QrPreview url={lastInvoice.claimLink} />
+              </InlineNotice>
+            ) : null}
+
+            <FancyButton
+              type="button"
+              variant="primary"
+              size="xl"
+              disabled={!canCreate}
+              onClick={handleCreate}
+              className="justify-self-start"
+            >
+              <HugeiconsIcon icon={CopyLinkIcon} size={16} strokeWidth={2.2} aria-hidden="true" />
+              Create invoice link
+            </FancyButton>
           </div>
+        </WorkbenchPanel>
 
+        <WorkbenchPanel title="Your invoices" eyebrow="Local">
           {invoices.length === 0 ? (
-            <p className="mt-6 text-[14px] text-white/40 font-medium">
-              No invoices yet. Create your first one.
-            </p>
+            <EmptyWorkbench
+              title="No invoice links yet"
+              description="Create a request and it will appear here for quick copy access."
+            />
           ) : (
-            <ul className="mt-6 flex flex-col gap-3">
-              {invoices.map((inv, i) => (
-                <motion.li
-                  key={inv.id}
-                  initial={{ opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.12 + i * 0.04, duration: 0.28 }}
-                  className="group flex items-start gap-4 rounded-[1.5rem] border border-white/[0.06] bg-white/[0.02] p-4 transition-all hover:bg-white/[0.04] hover:border-primary/30"
-                >
-                  <span
-                    className={cn(
-                      "mt-0.5 grid size-10 shrink-0 place-items-center rounded-xl border text-[13px] font-bold shadow-sm",
-                      inv.paidAt
-                        ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]"
-                        : "border-primary/30 bg-primary/20 text-primary drop-shadow-[0_0_8px_rgba(var(--primary-rgb),0.4)]",
-                    )}
-                  >
-                    {inv.symbol.slice(0, 3)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
-                      <p className="font-mono text-[14px] font-bold text-white group-hover:text-primary transition-colors">
-                        {inv.amount} {inv.symbol}
-                      </p>
-                      {inv.paidAt && (
-                        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-400 shadow-sm">
-                          paid
-                        </span>
-                      )}
-                    </div>
-                    {inv.memo && (
-                      <p className="truncate text-[13px] text-white/60 mt-1">
-                        {inv.memo}
-                      </p>
-                    )}
-                    <p className="mt-1.5 text-[11px] font-medium text-white/40 uppercase tracking-wider">
-                      {new Date(inv.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    aria-label="Copy link"
-                    onClick={() => handleCopy(inv.claimLink)}
-                    className="flex size-8 items-center justify-center rounded-lg text-white/40 transition-all hover:bg-white/[0.06] hover:text-white"
-                  >
-                    <HugeiconsIcon icon={CopyLinkIcon} size={16} strokeWidth={2} />
-                  </button>
-                </motion.li>
+            <div className="grid gap-2">
+              {invoices.map((invoice) => (
+                <InvoiceRow
+                  key={invoice.id}
+                  invoice={invoice}
+                  copied={copied === invoice.id}
+                  onCopy={() => handleCopy(invoice.claimLink, invoice.id)}
+                />
               ))}
-            </ul>
+            </div>
           )}
-        </motion.section>
+        </WorkbenchPanel>
       </div>
+    </WorkbenchPage>
+  );
+}
+
+function TokenSwitch({
+  value,
+  onChange,
+}: {
+  value: ShieldTokenId;
+  onChange: (id: ShieldTokenId) => void;
+}) {
+  return (
+    <div className="grid grid-cols-3 gap-1 rounded-lg border border-border/70 bg-secondary/30 p-1">
+      {TOKENS.map((token) => {
+        const active = value === token.id;
+        const supported = isShieldTokenSupported(token.id);
+        return (
+          <button
+            key={token.id}
+            type="button"
+            disabled={!supported}
+            onClick={() => onChange(token.id)}
+            className={cn(
+              "flex h-10 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
+              active ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+            )}
+          >
+            <token.Logo className="size-3.5" />
+            {token.label}
+          </button>
+        );
+      })}
     </div>
   );
+}
+
+function InvoiceRow({
+  invoice,
+  copied,
+  onCopy,
+}: {
+  invoice: Invoice;
+  copied: boolean;
+  onCopy: () => void;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-border/80 bg-card/45 p-4 sm:grid-cols-[40px_minmax(0,1fr)_auto] sm:items-center">
+      <span
+        className={cn(
+          "grid size-10 place-items-center rounded-lg border",
+          invoice.paidAt
+            ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
+            : "border-primary/25 bg-primary/10 text-primary",
+        )}
+      >
+        <HugeiconsIcon icon={invoice.paidAt ? CheckmarkCircle01Icon : InvoiceIcon} size={17} strokeWidth={2} aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <p className="font-mono text-sm text-foreground">
+          {invoice.amount} {invoice.symbol}
+          {invoice.paidAt ? <span className="ml-2 text-emerald-300">paid</span> : null}
+        </p>
+        <p className="mt-1 truncate text-xs text-muted-foreground">
+          {invoice.memo || "No memo"} · {new Date(invoice.createdAt).toLocaleDateString()}
+        </p>
+        {invoice.expiresAt ? (
+          <p className="mt-1 text-xs text-muted-foreground">
+            Expires {new Date(invoice.expiresAt).toLocaleDateString()}
+          </p>
+        ) : null}
+      </div>
+      <Button type="button" variant="outline" onClick={onCopy}>
+        <HugeiconsIcon icon={copied ? CheckmarkCircle01Icon : Copy01Icon} size={14} strokeWidth={2} aria-hidden="true" />
+        Copy link
+      </Button>
+    </div>
+  );
+}
+
+function QrPreview({ url }: { url: string }) {
+  const src = `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`;
+  return (
+    <div className="mt-3 flex items-center gap-3">
+      {/* eslint-disable-next-line @next/next/no-img-element -- QR is generated by a lightweight external QR endpoint for share links. */}
+      <img
+        src={src}
+        alt="QR code for the private payment request"
+        width={80}
+        height={80}
+        className="rounded-md border border-border bg-white p-1"
+      />
+      <p className="text-xs text-muted-foreground">
+        QR claim code for cross-border payers who receive the request on mobile.
+      </p>
+    </div>
+  );
+}
+
+function useInvoices(wallet: string): Invoice[] {
+  const cacheRef = React.useRef<{ wallet: string; json: string; value: Invoice[] }>({
+    wallet: "",
+    json: "[]",
+    value: EMPTY,
+  });
+
+  const subscribe = React.useCallback(
+    (notify: () => void) => {
+      if (typeof window === "undefined") return () => {};
+      const onCustom = (event: Event) => {
+        const detail = (event as CustomEvent<{ wallet: string; cluster: string }>).detail;
+        if (!detail || (detail.wallet === wallet && detail.cluster === solanaConfig.cluster)) notify();
+      };
+      const onStorage = (event: StorageEvent) => {
+        if (event.key?.startsWith("onyx:invoices:v1:")) notify();
+      };
+      window.addEventListener(invoiceStorageEvent(), onCustom);
+      window.addEventListener("storage", onStorage);
+      return () => {
+        window.removeEventListener(invoiceStorageEvent(), onCustom);
+        window.removeEventListener("storage", onStorage);
+      };
+    },
+    [wallet],
+  );
+
+  const getSnapshot = React.useCallback(() => {
+    if (!wallet || typeof window === "undefined") return EMPTY;
+    const fresh = loadInvoices(solanaConfig.cluster, wallet);
+    const json = JSON.stringify(fresh);
+    const cache = cacheRef.current;
+    if (cache.wallet === wallet && cache.json === json) return cache.value;
+    cacheRef.current = { wallet, json, value: fresh };
+    return fresh;
+  }, [wallet]);
+
+  return React.useSyncExternalStore(subscribe, getSnapshot, () => EMPTY);
 }
