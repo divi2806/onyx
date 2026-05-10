@@ -25,6 +25,7 @@ export type ClaimPayload = {
   m: string;           // mint base58
   s: ShieldTokenId;    // symbol
   id: string;          // invoice id
+  c?: SolanaCluster;   // network used when the invoice was created
   memo?: string;
   pm?: string;         // payer-facing memo / settlement note
   exp?: number;        // expiry timestamp in ms
@@ -120,6 +121,7 @@ export function createInvoice(
     m: draft.mint,
     s: draft.symbol,
     id,
+    c: cluster,
     ...(draft.memo ? { memo: draft.memo } : {}),
     ...(draft.payerMemo ? { pm: draft.payerMemo } : {}),
     ...(draft.expiresAt ? { exp: draft.expiresAt } : {}),
