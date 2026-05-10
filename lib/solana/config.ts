@@ -7,14 +7,14 @@ const VALID_CLUSTERS: readonly SolanaCluster[] = [
   "localnet",
 ];
 
-const DEFAULT_RPC: Record<SolanaCluster, string> = {
+export const DEFAULT_RPC: Record<SolanaCluster, string> = {
   "mainnet-beta": "https://api.mainnet-beta.solana.com",
   devnet: "https://api.devnet.solana.com",
   testnet: "https://api.testnet.solana.com",
   localnet: "http://127.0.0.1:8899",
 };
 
-const DEFAULT_WS: Record<SolanaCluster, string> = {
+export const DEFAULT_WS: Record<SolanaCluster, string> = {
   "mainnet-beta": "wss://api.mainnet-beta.solana.com",
   devnet: "wss://api.devnet.solana.com",
   testnet: "wss://api.testnet.solana.com",
@@ -45,8 +45,16 @@ if (!cluster) {
 const envRpcUrl = clean(process.env.NEXT_PUBLIC_SOLANA_RPC_URL);
 const envWsUrl = clean(process.env.NEXT_PUBLIC_SOLANA_WS_URL);
 
-const rpcUrl = isHttpUrl(envRpcUrl) ? envRpcUrl : DEFAULT_RPC[cluster];
-const wsUrl = isWsUrl(envWsUrl) ? envWsUrl : DEFAULT_WS[cluster];
+export function defaultRpcUrlFor(cluster: SolanaCluster): string {
+  return DEFAULT_RPC[cluster];
+}
+
+export function defaultWsUrlFor(cluster: SolanaCluster): string {
+  return DEFAULT_WS[cluster];
+}
+
+const rpcUrl = isHttpUrl(envRpcUrl) ? envRpcUrl : defaultRpcUrlFor(cluster);
+const wsUrl = isWsUrl(envWsUrl) ? envWsUrl : defaultWsUrlFor(cluster);
 
 if (envRpcUrl && envRpcUrl !== rpcUrl) {
   console.warn(
