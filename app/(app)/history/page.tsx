@@ -43,8 +43,8 @@ import {
 import type { ReceivedTransaction } from "@/lib/cloak/scanned-history";
 import { usePaymentHistory } from "@/lib/cloak/use-payment-history";
 import { useScannedHistory } from "@/lib/cloak/use-scanned-history";
-import { solanaConfig } from "@/lib/solana/config";
 import { solscanTxUrl } from "@/lib/solana/explorer";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { cn } from "@/lib/utils";
 
 type Group =
@@ -66,6 +66,8 @@ const PAGE_SIZE = 8;
 
 export default function HistoryPage() {
   const wallet = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const sender = wallet.publicKey?.toBase58() ?? null;
   const { records, ready } = usePaymentHistory();
   const {
@@ -85,8 +87,8 @@ export default function HistoryPage() {
   const [toDate, setToDate] = React.useState("");
 
   React.useEffect(() => {
-    if (sender) migratePaymentRecords(sender, solanaConfig.cluster);
-  }, [sender]);
+    if (sender) migratePaymentRecords(sender, cluster);
+  }, [cluster, sender]);
 
   const fromMs = React.useMemo(() => {
     if (!fromDate) return Number.NEGATIVE_INFINITY;
@@ -297,6 +299,7 @@ function LedgerRow({ group }: { group: Group }) {
 }
 
 function SingleRow({ record }: { record: PaymentRecord }) {
+  const { config } = useSolanaNetwork();
   return (
     <RowFrame
       icon={ArrowUp01Icon}
@@ -304,12 +307,13 @@ function SingleRow({ record }: { record: PaymentRecord }) {
       title={shortAddr(record.recipient)}
       subtitle={`${formatDate(record.timestamp)} · ${inferPaymentSource(record)}`}
       amount={`-${formatBaseUnits(record.netRaw, record.decimals)} ${record.token}`}
-      href={solscanTxUrl(record.withdrawSignature)}
+      href={solscanTxUrl(record.withdrawSignature, config.cluster, config.rpcUrl)}
     />
   );
 }
 
 function ReceivedRow({ tx }: { tx: ReceivedTransaction }) {
+  const { config } = useSolanaNetwork();
   const decimals = tx.decimals ?? 9;
   const symbol = tx.symbol ?? "";
   return (
@@ -319,7 +323,7 @@ function ReceivedRow({ tx }: { tx: ReceivedTransaction }) {
       title={shortAddr(tx.recipient)}
       subtitle={`${formatDate(tx.timestamp)} · ${txTypeLabel(tx.txType)}`}
       amount={`+${formatBaseUnits(String(tx.netAmount), decimals)} ${symbol}`}
-      href={tx.signature ? solscanTxUrl(tx.signature) : undefined}
+      href={tx.signature ? solscanTxUrl(tx.signature, config.cluster, config.rpcUrl) : undefined}
     />
   );
 }
@@ -331,6 +335,7 @@ function BatchRow({
   batchId: string;
   records: PaymentRecord[];
 }) {
+  const { config } = useSolanaNetwork();
   const [open, setOpen] = React.useState(false);
   const head = records[0];
   const isRecurring = inferPaymentSource(head) === "recurring";
@@ -374,7 +379,7 @@ function BatchRow({
             <DialogTitle>{isRecurring ? "Recurring batch" : "Payroll batch"}</DialogTitle>
             <DialogDescription>
               Gross {formatBaseUnits(totalGross.toString(), head.decimals)} {head.token} · deposit{" "}
-              <a href={solscanTxUrl(batchId)} target="_blank" rel="noreferrer" className="font-mono text-primary underline underline-offset-4">
+              <a href={solscanTxUrl(batchId, config.cluster, config.rpcUrl)} target="_blank" rel="noreferrer" className="font-mono text-primary underline underline-offset-4">
                 {shortSig(batchId)}
               </a>
             </DialogDescription>
@@ -390,7 +395,7 @@ function BatchRow({
                     </td>
                     <td className="px-3 py-2 text-right">
                       <a
-                        href={solscanTxUrl(record.withdrawSignature)}
+                        href={solscanTxUrl(record.withdrawSignature, config.cluster, config.rpcUrl)}
                         target="_blank"
                         rel="noreferrer"
                         aria-label="Open payout on Solscan"
