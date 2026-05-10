@@ -2,7 +2,7 @@
 
 import * as React from "react";
 
-import { solanaConfig } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
 import { loadTeam, teamStorageEvent } from "./storage";
 import type { TeamMember } from "./types";
@@ -10,11 +10,13 @@ import type { TeamMember } from "./types";
 const EMPTY: TeamMember[] = [];
 
 export function useTeam(): { members: TeamMember[]; ready: boolean } {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const subscribe = React.useCallback((notify: () => void) => {
     if (typeof window === "undefined") return () => {};
     const onCustom = (e: Event) => {
       const detail = (e as CustomEvent<{ cluster: string }>).detail;
-      if (!detail || detail.cluster === solanaConfig.cluster) notify();
+      if (!detail || detail.cluster === cluster) notify();
     };
     const onStorage = (e: StorageEvent) => {
       if (!e.key) return;
@@ -27,7 +29,7 @@ export function useTeam(): { members: TeamMember[]; ready: boolean } {
       window.removeEventListener(ev, onCustom);
       window.removeEventListener("storage", onStorage);
     };
-  }, []);
+  }, [cluster]);
 
   const cacheRef = React.useRef<{
     serialized: string;
@@ -36,14 +38,14 @@ export function useTeam(): { members: TeamMember[]; ready: boolean } {
 
   const getSnapshot = React.useCallback(() => {
     if (typeof window === "undefined") return EMPTY;
-    const fresh = loadTeam(solanaConfig.cluster);
+    const fresh = loadTeam(cluster);
     const serialized = JSON.stringify(fresh);
     if (cacheRef.current.serialized === serialized) {
       return cacheRef.current.value;
     }
     cacheRef.current = { serialized, value: fresh };
     return fresh;
-  }, []);
+  }, [cluster]);
 
   const stored = React.useSyncExternalStore(
     subscribe,

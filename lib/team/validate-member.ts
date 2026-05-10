@@ -1,6 +1,7 @@
 import { isAddress } from "@solana/kit";
 
 import { getShieldToken, type ShieldTokenId } from "@/lib/cloak/tokens";
+import type { SolanaCluster } from "@/lib/solana/config";
 
 import type { TeamMemberDraft } from "./types";
 
@@ -15,7 +16,11 @@ const MIN_AMOUNT = 0.01;
 
 export function validateMemberDraft(
   draft: TeamMemberDraft,
-  options?: { existing?: { id: string; wallet: string }[]; editingId?: string },
+  options?: {
+    cluster?: SolanaCluster;
+    existing?: { id: string; wallet: string }[];
+    editingId?: string;
+  },
 ): MemberDraftErrors {
   const errors: MemberDraftErrors = {};
 
@@ -36,7 +41,7 @@ export function validateMemberDraft(
   }
 
   const token = draft.token as ShieldTokenId;
-  const shieldToken = getShieldToken(token);
+  const shieldToken = getShieldToken(token, options?.cluster);
   if (!shieldToken) {
     errors.token = `${token} is not available on this network`;
   }

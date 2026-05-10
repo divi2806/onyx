@@ -1,4 +1,5 @@
 import { getShieldTokenByMint } from "@/lib/cloak/tokens";
+import type { SolanaCluster } from "@/lib/solana/config";
 
 import {
   TEST_INTERVAL_MAX_SEC,
@@ -39,6 +40,7 @@ const CADENCES: ScheduleCadence[] = [
 
 export function validateScheduleDraft(
   draft: ScheduleDraft,
+  cluster?: SolanaCluster,
 ): ScheduleDraftErrors {
   const errors: ScheduleDraftErrors = {};
 
@@ -74,7 +76,7 @@ export function validateScheduleDraft(
     }
   }
 
-  const token = getShieldTokenByMint(draft.mint);
+  const token = getShieldTokenByMint(draft.mint, cluster);
   if (!token) {
     errors.mint = "Token is not available on this network";
   }

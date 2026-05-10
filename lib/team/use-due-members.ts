@@ -3,6 +3,7 @@
 import * as React from "react";
 
 import { getShieldTokenByMint, type ShieldToken } from "@/lib/cloak/tokens";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
 import { isDue } from "./schedule";
 import type { TeamMember } from "./types";
@@ -24,6 +25,8 @@ export function useDueMembers(): {
   ready: boolean;
 } {
   const { members, ready } = useTeam();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const [tick, setTick] = React.useState(0);
 
   React.useEffect(() => {
@@ -47,7 +50,7 @@ export function useDueMembers(): {
     }
     const result: DueGroup[] = [];
     for (const [mint, members] of byMint) {
-      const token = getShieldTokenByMint(mint);
+      const token = getShieldTokenByMint(mint, cluster);
       // Skip groups whose token isn't available on this cluster — the user
       // can't pay them anyway. They stay visible on the team list with the
       // "unavailable" pill.
@@ -55,7 +58,7 @@ export function useDueMembers(): {
       result.push({ mint, token, members });
     }
     return result;
-  }, [due]);
+  }, [cluster, due]);
 
   const total = due.length;
 
