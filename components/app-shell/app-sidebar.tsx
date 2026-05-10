@@ -40,7 +40,7 @@ const NAV_PRIMARY: NavItem[] = [
 
 const NAV_TOOLS: NavItem[] = [
   { href: "/treasury", label: "Treasury", icon: BankIcon },
-  { href: "/compliance", label: "Compliance", icon: FileSecurityIcon },
+  { href: "/compliance", label: "Audit Access", icon: FileSecurityIcon },
   { href: "/invoice", label: "Invoice", icon: InvoiceIcon },
 ];
 
