@@ -26,8 +26,8 @@ import {
   type ShieldTokenId,
 } from "@/lib/cloak/tokens";
 import { useTreasuryRebalance } from "@/lib/cloak/use-treasury-rebalance";
-import { solanaConfig } from "@/lib/solana/config";
 import { solscanTxUrl } from "@/lib/solana/explorer";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { cn } from "@/lib/utils";
 
 const TOKENS = [
@@ -59,6 +59,8 @@ type TreasuryQuote = {
 
 export default function TreasuryPage() {
   const wallet = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const rebalance = useTreasuryRebalance();
   const [sourceToken] = React.useState<ShieldTokenId>("SOL");
   const [outputToken, setOutputToken] = React.useState<ShieldTokenId>("USDC");
@@ -67,13 +69,13 @@ export default function TreasuryPage() {
   const [quoteNonce, setQuoteNonce] = React.useState(0);
   const [quoteState, setQuoteState] = React.useState<QuoteState>({ status: "idle" });
 
-  const source = getShieldToken(sourceToken);
-  const output = getShieldToken(outputToken);
+  const source = getShieldToken(sourceToken, cluster);
+  const output = getShieldToken(outputToken, cluster);
   const sourceMint = source?.mint.toBase58() ?? "";
   const outputMint = output?.mint.toBase58() ?? "";
   const sourceDecimals = source?.decimals ?? 0;
   const outputDecimals = output?.decimals ?? 0;
-  const outputSupported = isShieldTokenSupported(outputToken) && outputToken !== "SOL";
+  const outputSupported = isShieldTokenSupported(outputToken, cluster) && outputToken !== "SOL";
   const normalizedSlippageBps = normalizeBps(slippageBps);
   const amountValid = isPositiveDecimal(amount);
   const running =
@@ -118,6 +120,7 @@ export default function TreasuryPage() {
             outputMint,
             amount: amountBaseUnits,
             slippageBps: normalizedSlippageBps,
+            cluster,
           }),
         });
         const body = (await res.json().catch(() => null)) as
@@ -157,6 +160,7 @@ export default function TreasuryPage() {
     quoteNonce,
     sourceDecimals,
     sourceMint,
+    cluster,
   ]);
 
   async function run() {
@@ -191,7 +195,7 @@ export default function TreasuryPage() {
       stats={[
         { label: "Source", value: "SOL", hint: "shielded input" },
         { label: "Receive", value: outputToken, tone: outputSupported ? "primary" : "danger" },
-        { label: "Network", value: solanaConfig.cluster },
+        { label: "Network", value: cluster },
         {
           label: "State",
           value: rebalance.phase,
@@ -227,7 +231,7 @@ export default function TreasuryPage() {
             ) : null}
             {!outputSupported ? (
               <InlineNotice tone="danger">
-                {outputToken} is not available as a Cloak swap output on {solanaConfig.cluster}.
+                {outputToken} is not available as a Cloak swap output on {cluster}.
               </InlineNotice>
             ) : null}
 
@@ -392,8 +396,8 @@ export default function TreasuryPage() {
                 The shield deposit and private swap state were submitted through Cloak.
               </InlineNotice>
               <div className="grid gap-2">
-                <ReceiptLine label="Shield deposit" value={rebalance.result.depositSignature} href={solscanTxUrl(rebalance.result.depositSignature)} />
-                <ReceiptLine label="Swap transaction" value={rebalance.result.swapSignature} href={solscanTxUrl(rebalance.result.swapSignature)} />
+                <ReceiptLine label="Shield deposit" value={rebalance.result.depositSignature} href={solscanTxUrl(rebalance.result.depositSignature, config.cluster, config.rpcUrl)} />
+                <ReceiptLine label="Swap transaction" value={rebalance.result.swapSignature} href={solscanTxUrl(rebalance.result.swapSignature, config.cluster, config.rpcUrl)} />
                 <ReceiptLine label="Swap state PDA" value={rebalance.result.swapStatePda} />
                 <ReceiptLine label="Relay request" value={rebalance.result.requestId ?? "not returned"} />
                 <ReceiptLine label="Nullifier" value={rebalance.result.nullifier} />
@@ -413,11 +417,13 @@ function OutputTokenSelector({
   value: ShieldTokenId;
   onChange: (id: ShieldTokenId) => void;
 }) {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   return (
     <div className="flex rounded-lg border border-border/70 bg-card p-1" role="group" aria-label="Receive token">
       {TOKENS.filter((token) => token.id !== "SOL").map((token) => {
         const active = value === token.id;
-        const supported = isShieldTokenSupported(token.id);
+        const supported = isShieldTokenSupported(token.id, cluster);
         return (
           <button
             key={token.id}
@@ -430,7 +436,7 @@ function OutputTokenSelector({
                 ? "bg-primary/15 text-primary"
                 : "text-muted-foreground hover:bg-secondary hover:text-foreground",
             )}
-            title={supported ? token.name : `Not configured on ${solanaConfig.cluster}`}
+            title={supported ? token.name : `Not configured on ${cluster}`}
           >
             <token.Logo className="size-3.5" />
             {token.label}
