@@ -4,7 +4,7 @@ import * as React from "react";
 
 import { useWallet } from "@solana/wallet-adapter-react";
 
-import { solanaConfig } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
 import {
   loadViewingKeys,
@@ -16,6 +16,8 @@ const EMPTY: ViewingKey[] = [];
 
 export function useViewingKeys(): ViewingKey[] {
   const { publicKey } = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const wallet = publicKey?.toBase58() ?? "";
 
   // useSyncExternalStore requires getSnapshot to return the same reference
@@ -32,7 +34,7 @@ export function useViewingKeys(): ViewingKey[] {
       const onCustom = (e: Event) => {
         const detail = (e as CustomEvent<{ cluster: string; wallet: string }>).detail;
         if (!detail) return;
-        if (detail.cluster === solanaConfig.cluster && detail.wallet === wallet) notify();
+        if (detail.cluster === cluster && detail.wallet === wallet) notify();
       };
       const onStorage = (e: StorageEvent) => {
         if (e.key?.startsWith("onyx:viewing-keys:v1:")) notify();
@@ -45,17 +47,17 @@ export function useViewingKeys(): ViewingKey[] {
         window.removeEventListener("storage", onStorage);
       };
     },
-    [wallet],
+    [cluster, wallet],
   );
 
   const getSnapshot = React.useCallback((): ViewingKey[] => {
     if (!wallet || typeof window === "undefined") return EMPTY;
-    const fresh = loadViewingKeys(solanaConfig.cluster, wallet);
+    const fresh = loadViewingKeys(cluster, wallet);
     const json = JSON.stringify(fresh);
     if (json === cacheRef.current.json) return cacheRef.current.value;
     cacheRef.current = { value: fresh, json };
     return fresh;
-  }, [wallet]);
+  }, [cluster, wallet]);
 
   return React.useSyncExternalStore(subscribe, getSnapshot, () => EMPTY);
 }
