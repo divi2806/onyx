@@ -1,4 +1,8 @@
 import type { SolanaCluster } from "@/lib/solana/config";
+import type {
+  AuditRedactionMode,
+  AuditRole,
+} from "./audit-capability-types";
 
 const STORAGE_PREFIX = "onyx:viewing-keys:v1";
 const STORAGE_EVENT = "onyx:viewing-keys-updated";
@@ -12,6 +16,11 @@ export type ViewingKey = {
   wallet: string;
   createdAt: number;
   revoked: boolean;
+  token?: string;
+  tokenId?: string;
+  role?: AuditRole;
+  redaction?: AuditRedactionMode;
+  expiresAt?: number;
 };
 
 export type SharableToken = {
@@ -66,7 +75,8 @@ function newId(): string {
 export function addViewingKey(
   cluster: SolanaCluster,
   wallet: string,
-  draft: Pick<ViewingKey, "auditor" | "dateFrom" | "dateTo" | "nkHex">,
+  draft: Pick<ViewingKey, "auditor" | "dateFrom" | "dateTo" | "nkHex"> &
+    Partial<Pick<ViewingKey, "token" | "tokenId" | "role" | "redaction" | "expiresAt">>,
 ): ViewingKey {
   const vk: ViewingKey = {
     id: newId(),
@@ -88,6 +98,7 @@ export function revokeViewingKey(cluster: SolanaCluster, wallet: string, id: str
 
 /** Encodes a ViewingKey into a compact base64 token to share with the auditor. */
 export function encodeViewingKeyToken(vk: ViewingKey): string {
+  if (vk.token) return vk.token;
   const payload: SharableToken = {
     nk: vk.nkHex,
     from: vk.dateFrom,
@@ -132,6 +143,11 @@ function isViewingKey(v: unknown): v is ViewingKey {
     typeof r.nkHex === "string" &&
     typeof r.wallet === "string" &&
     typeof r.createdAt === "number" &&
-    typeof r.revoked === "boolean"
+    typeof r.revoked === "boolean" &&
+    (r.token === undefined || typeof r.token === "string") &&
+    (r.tokenId === undefined || typeof r.tokenId === "string") &&
+    (r.role === undefined || typeof r.role === "string") &&
+    (r.redaction === undefined || typeof r.redaction === "string") &&
+    (r.expiresAt === undefined || typeof r.expiresAt === "number")
   );
 }
