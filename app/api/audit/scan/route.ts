@@ -7,8 +7,8 @@ import {
   redactComplianceReport,
   resolveAuditTokenForScan,
 } from "@/lib/cloak/audit-capability-server";
-import { cloakConfig } from "@/lib/cloak/config";
-import { solanaConfig } from "@/lib/solana/config";
+import { getCloakConfig } from "@/lib/cloak/config";
+import { defaultRpcUrlFor, solanaConfig, type SolanaCluster } from "@/lib/solana/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,9 +26,6 @@ export async function POST(req: Request) {
   let payload: ReturnType<typeof resolveAuditTokenForScan>;
   try {
     payload = resolveAuditTokenForScan(token);
-    if (payload.cluster !== solanaConfig.cluster) {
-      throw new Error(`Token is for ${payload.cluster}, but this server is ${solanaConfig.cluster}.`);
-    }
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Audit token rejected." },
@@ -36,10 +33,9 @@ export async function POST(req: Request) {
     );
   }
 
-  const rpcUrl =
-    process.env.CLOAK_SCAN_RPC_URL ??
-    process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
-    solanaConfig.rpcUrl;
+  const cluster = payload.cluster;
+  const cloakConfig = getCloakConfig(cluster);
+  const rpcUrl = scanRpcUrl(cluster);
   const connection = new Connection(rpcUrl, "confirmed");
 
   try {
@@ -93,6 +89,17 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
+}
+
+function scanRpcUrl(cluster: SolanaCluster): string {
+  if (cluster === solanaConfig.cluster) {
+    return (
+      process.env.CLOAK_SCAN_RPC_URL ??
+      process.env.NEXT_PUBLIC_SOLANA_RPC_URL ??
+      solanaConfig.rpcUrl
+    );
+  }
+  return defaultRpcUrlFor(cluster);
 }
 
 function hexToBytes(hex: string): Uint8Array {
