@@ -7,26 +7,40 @@ import {
   Delete02Icon,
   Download01Icon,
   EyeIcon,
-  FileSecurityIcon,
   KeyIcon,
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { motion } from "motion/react";
 import * as React from "react";
 
+import { Button } from "@/components/ui/button";
 import { FancyButton } from "@/components/ui/fancy-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  FieldStack,
+  InlineNotice,
+  WorkbenchPage,
+  WorkbenchPanel,
+} from "@/components/ui/workbench";
 import { cloakConfig } from "@/lib/cloak/config";
 import { deriveNk, registerNkWithRelay } from "@/lib/cloak/derive-nk";
 import { createMemoizedSignMessage } from "@/lib/cloak/sign-message-cache";
 import { useViewingKeys } from "@/lib/cloak/use-viewing-keys";
 import {
+  AUDIT_REDACTION_MODES,
+  AUDIT_ROLES,
+  type AuditAccessLog,
+  type AuditCapabilityPublic,
+  type AuditRedactionMode,
+  type AuditRole,
+} from "@/lib/cloak/audit-capability-types";
+import {
   addViewingKey,
   encodeViewingKeyToken,
   revokeViewingKey,
+  type ViewingKey,
 } from "@/lib/cloak/viewing-keys";
 import { solanaConfig } from "@/lib/solana/config";
 import { cn } from "@/lib/utils";
@@ -40,25 +54,71 @@ export default function CompliancePage() {
   const [auditor, setAuditor] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
+  const [role, setRole] = React.useState<AuditRole>("external-auditor");
+  const [redaction, setRedaction] = React.useState<AuditRedactionMode>("full");
+  const [expiresInDays, setExpiresInDays] = React.useState("30");
   const [state, setState] = React.useState<GenerateState>("idle");
   const [lastToken, setLastToken] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [regWarning, setRegWarning] = React.useState<string | null>(null);
   const [copied, setCopied] = React.useState<string | null>(null);
   const [exporting, setExporting] = React.useState<string | null>(null);
+  const [logs, setLogs] = React.useState<AuditAccessLog[]>([]);
 
-  // Memoised sign fn: avoids re-prompting for the same wallet in a session.
   const signCacheRef = React.useRef<{
     fn: ((msg: Uint8Array) => Promise<Uint8Array>) | null;
     key: string;
   }>({ fn: null, key: "" });
-
-  // Cached NK for this wallet session (same wallet = same NK every time).
   const nkCacheRef = React.useRef<{
     nsk: Uint8Array;
     nkHex: string;
     key: string;
   } | null>(null);
+
+  const activeKeys = viewingKeys.filter((key) => !key.revoked);
+  const revokedKeys = viewingKeys.filter((key) => key.revoked);
+  const isLoading = state === "signing" || state === "registering";
+  const expiryDays = Number.parseInt(expiresInDays, 10);
+  const canGenerate =
+    !!publicKey &&
+    !!signMessage &&
+    auditor.trim().length > 0 &&
+    !!dateFrom &&
+    !!dateTo &&
+    Number.isFinite(expiryDays) &&
+    expiryDays > 0 &&
+    !isLoading;
+
+  const refreshLogs = React.useCallback(async (wallet: string) => {
+    try {
+      const res = await fetch(`/api/audit/logs?wallet=${encodeURIComponent(wallet)}`);
+      if (!res.ok) return;
+      const body = (await res.json()) as { logs?: AuditAccessLog[] };
+      setLogs(Array.isArray(body.logs) ? body.logs : []);
+    } catch {
+      // Logs are best-effort diagnostics.
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (!publicKey) return;
+    let cancelled = false;
+    async function load() {
+      try {
+        const wallet = publicKey!.toBase58();
+        const res = await fetch(`/api/audit/logs?wallet=${encodeURIComponent(wallet)}`);
+        if (!res.ok || cancelled) return;
+        const body = (await res.json()) as { logs?: AuditAccessLog[] };
+        if (!cancelled) setLogs(Array.isArray(body.logs) ? body.logs : []);
+      } catch {
+        // Logs are best-effort diagnostics.
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [publicKey]);
 
   function getMemoizedSign() {
     const walletKey = publicKey!.toBase58();
@@ -73,17 +133,14 @@ export default function CompliancePage() {
 
   async function getOrDeriveNk() {
     const walletKey = publicKey!.toBase58();
-    if (nkCacheRef.current?.key === walletKey) {
-      return nkCacheRef.current;
-    }
+    if (nkCacheRef.current?.key === walletKey) return nkCacheRef.current;
     const result = await deriveNk(getMemoizedSign());
     nkCacheRef.current = { ...result, key: walletKey };
     return nkCacheRef.current;
   }
 
   async function handleGenerate() {
-    if (!publicKey || !signMessage) return;
-    if (!auditor.trim() || !dateFrom || !dateTo) return;
+    if (!publicKey || !signMessage || !canGenerate) return;
 
     setState("signing");
     setError(null);
@@ -92,8 +149,6 @@ export default function CompliancePage() {
 
     try {
       const { nsk, nkHex } = await getOrDeriveNk();
-
-      // Register NK with relay so chain notes are encrypted for this wallet.
       setState("registering");
       try {
         await registerNkWithRelay(
@@ -103,431 +158,420 @@ export default function CompliancePage() {
           getMemoizedSign(),
         );
       } catch (regErr) {
-        // Non-fatal: scanning still works via ATA fallback.
         const msg = regErr instanceof Error ? regErr.message : String(regErr);
         setRegWarning(`Relay registration skipped: ${msg}`);
       }
 
-      const vk = addViewingKey(solanaConfig.cluster, publicKey.toBase58(), {
+      const issued = await issueAuditCapability({
+        auditor: auditor.trim(),
+        wallet: publicKey.toBase58(),
+        issuer: publicKey.toBase58(),
+        nkHex,
+        role,
+        redaction,
+        dateFrom,
+        dateTo,
+        expiresInDays: expiryDays,
+      });
+
+      const key = addViewingKey(solanaConfig.cluster, publicKey.toBase58(), {
         auditor: auditor.trim(),
         dateFrom,
         dateTo,
         nkHex,
+        token: issued.token,
+        tokenId: issued.capability.tokenId,
+        role: issued.capability.role,
+        redaction: issued.capability.redaction,
+        expiresAt: issued.capability.expiresAt,
       });
-
-      setLastToken(encodeViewingKeyToken(vk));
+      setLastToken(encodeViewingKeyToken(key));
       setState("done");
       setAuditor("");
       setDateFrom("");
       setDateTo("");
+      void refreshLogs(publicKey.toBase58());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Key generation failed.");
       setState("error");
     }
   }
 
-  function handleRevoke(id: string) {
-    if (!publicKey) return;
-    revokeViewingKey(solanaConfig.cluster, publicKey.toBase58(), id);
-  }
-
   async function handleCopy(text: string, id: string) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(id);
-      setTimeout(() => setCopied(null), 2000);
-    } catch { /* clipboard blocked */ }
+      setTimeout(() => setCopied(null), 1600);
+    } catch {
+      // clipboard blocked
+    }
   }
 
-  async function handleExportCsv(
-    nkHex: string,
-    dateFrom: string,
-    dateTo: string,
-    keyId: string,
-  ) {
+  async function handleExportCsv(key: ViewingKey) {
     if (!publicKey || exporting) return;
-    setExporting(keyId);
+    setExporting(key.id);
+    setError(null);
     try {
-      // Convert ISO date strings to millisecond timestamps.
-      // beforeTimestamp includes the full final day (+1 day - 1 ms).
-      const afterTimestamp = new Date(dateFrom).getTime();
-      const beforeTimestamp = new Date(dateTo).getTime() + 86_400_000 - 1;
-
-      const res = await fetch("/api/scan-received", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          wallet: publicKey.toBase58(),
-          viewingKeyNk: nkHex,
-          afterTimestamp,
-          beforeTimestamp,
-        }),
-      });
-      if (!res.ok) {
-        const body = (await res.json()) as { error?: string };
-        throw new Error(body.error ?? `Scan failed (${res.status})`);
+      let csv: string;
+      if (key.token) {
+        const res = await fetch("/api/audit/scan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: key.token }),
+        });
+        if (!res.ok) {
+          const body = (await res.json()) as { error?: string };
+          throw new Error(body.error ?? `Scan failed (${res.status})`);
+        }
+        const body = (await res.json()) as { csv: string };
+        csv = body.csv;
+      } else {
+        const afterTimestamp = new Date(key.dateFrom).getTime();
+        const beforeTimestamp = new Date(key.dateTo).getTime() + 86_400_000 - 1;
+        const res = await fetch("/api/scan-received", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            wallet: publicKey.toBase58(),
+            viewingKeyNk: key.nkHex,
+            afterTimestamp,
+            beforeTimestamp,
+          }),
+        });
+        if (!res.ok) {
+          const body = (await res.json()) as { error?: string };
+          throw new Error(body.error ?? `Scan failed (${res.status})`);
+        }
+        const { report } = (await res.json()) as { report: unknown };
+        const { formatComplianceCsv } = await import("@cloak.dev/sdk");
+        csv = formatComplianceCsv(report as Parameters<typeof formatComplianceCsv>[0]);
       }
-      const { report } = (await res.json()) as { report: unknown };
-
-      const { formatComplianceCsv } = await import("@cloak.dev/sdk");
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const csv = formatComplianceCsv(report as any);
       const blob = new Blob([csv], { type: "text/csv" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `onyx-audit-${dateFrom}-to-${dateTo}.csv`;
+      a.download = `onyx-audit-${key.dateFrom}-to-${key.dateTo}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+      void refreshLogs(publicKey.toBase58());
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Export failed.";
-      setError(msg);
+      setError(err instanceof Error ? err.message : "Export failed.");
     } finally {
       setExporting(null);
     }
   }
 
-  const canGenerate =
-    !!publicKey && !!signMessage && auditor.trim().length > 0 && !!dateFrom && !!dateTo;
-  const isLoading = state === "signing" || state === "registering";
-
-  const stateLabel: Record<GenerateState, string> = {
-    idle: "Generate viewing key",
-    signing: "Signing…",
-    registering: "Registering with relay…",
-    done: "Generate viewing key",
-    error: "Try again",
-  };
-
-  const activeKeys = viewingKeys.filter((k) => !k.revoked);
-  const revokedKeys = viewingKeys.filter((k) => k.revoked);
+  async function handleRevoke(key: ViewingKey) {
+    if (!publicKey) return;
+    if (key.tokenId) {
+      await fetch("/api/audit/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tokenId: key.tokenId,
+          wallet: publicKey.toBase58(),
+          auditor: key.auditor,
+          role: key.role,
+          redaction: key.redaction,
+        }),
+      }).catch(() => undefined);
+    }
+    revokeViewingKey(solanaConfig.cluster, publicKey.toBase58(), key.id);
+    void refreshLogs(publicKey.toBase58());
+  }
 
   return (
-    <div className="mx-auto w-full max-w-screen-xl px-5">
-      <div className="py-8">
-        <span className="inline-flex items-center gap-2 rounded-full border border-primary/22 bg-primary/8 px-3 py-1 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-primary/75">
-          <span className="size-1.5 rounded-full bg-primary/70" />
-          Regulatory Audit
-        </span>
-        <div className="mt-3 flex items-center justify-between gap-4">
-          <h1 className="text-[26px] font-bold tracking-[-0.03em] text-foreground sm:text-[32px]">
-            Key Generation
-          </h1>
-        </div>
-        <div className="mt-4 h-px bg-gradient-to-r from-primary/40 via-border/50 to-transparent" />
-      </div>
-
-      <div className="grid gap-6 pb-16 lg:grid-cols-[1fr_360px] lg:items-start">
-
-        {/* ── Issue new key ─────────────────────────────────── */}
-        <motion.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className="flex flex-col gap-6 rounded-xl border border-border/60 bg-card/40 p-6 sm:p-8"
-        >
-          <div className="flex items-start gap-3">
-            <div className="grid size-10 shrink-0 place-items-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
-              <HugeiconsIcon icon={KeyIcon} size={18} strokeWidth={1.6} />
-            </div>
-            <div>
-              <h2 className="text-[16px] font-medium tracking-tight text-foreground">
-                Issue a viewing key
-              </h2>
-              <p className="mt-1 text-[13px] leading-5 text-muted-foreground">
-                Date-ranged, read-only, revocable. Derived locally from your master key — never sent to any server.
-              </p>
-            </div>
+    <WorkbenchPage
+      kicker="Compliance module"
+      title="Viewing-key desk"
+      description="Derive a local NK, register it with the relay, and issue server-enforced audit capabilities with immutable scope."
+      stats={[
+        { label: "Active keys", value: activeKeys.length, hint: "available tokens", tone: activeKeys.length ? "primary" : "default" },
+        { label: "Revoked", value: revokedKeys.length, hint: "local revoke flag" },
+        { label: "Relay", value: cloakConfig.relayUrl.includes("devnet") ? "devnet" : "mainnet", hint: "Cloak endpoint" },
+        { label: "Wallet", value: publicKey ? "connected" : "missing", tone: publicKey ? "success" : "warning" },
+      ]}
+      aside={
+        <WorkbenchPanel title="Compliance model" eyebrow="Scope">
+          <div className="grid gap-3 text-sm text-muted-foreground">
+            <p>Shared tokens are opaque. Auditors cannot read or edit the NK.</p>
+            <p>The server decrypts the token, enforces expiry and date range, then scans Cloak.</p>
+            <p>Revocation is enforced by the app server for active runtime sessions.</p>
           </div>
+        </WorkbenchPanel>
+      }
+    >
+      <div className="grid gap-4">
+        <WorkbenchPanel title="Issue token" eyebrow="Generate">
+          <div className="grid gap-5">
+            {!publicKey ? (
+              <InlineNotice tone="warning">Connect your wallet to derive a viewing key.</InlineNotice>
+            ) : null}
 
-          {/* Form */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-2 sm:col-span-2">
-              <Label htmlFor="auditor">Auditor / recipient label</Label>
-              <Input
-                id="auditor"
-                placeholder="e.g. Trail of Bits, Internal Finance"
-                value={auditor}
-                onChange={(e) => setAuditor(e.target.value)}
-                disabled={isLoading}
-              />
+            <div className="grid gap-4 sm:grid-cols-2">
+              <FieldStack className="sm:col-span-2">
+                <Label htmlFor="auditor" required>Auditor label</Label>
+                <Input
+                  id="auditor"
+                  value={auditor}
+                  onChange={(e) => setAuditor(e.target.value)}
+                  placeholder="Internal finance, auditor, accountant"
+                  disabled={isLoading}
+                  autoComplete="organization"
+                />
+              </FieldStack>
+              <FieldStack>
+                <Label htmlFor="dateFrom" required>From</Label>
+                <Input id="dateFrom" type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} disabled={isLoading} />
+              </FieldStack>
+              <FieldStack>
+                <Label htmlFor="dateTo" required>To</Label>
+                <Input id="dateTo" type="date" value={dateTo} onChange={(e) => setDateTo(e.target.value)} disabled={isLoading} />
+              </FieldStack>
+              <FieldStack>
+                <Label htmlFor="auditRole">Role</Label>
+                <select
+                  id="auditRole"
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as AuditRole)}
+                  disabled={isLoading}
+                  className="h-11 rounded-lg border border-border bg-secondary/15 px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {AUDIT_ROLES.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+              </FieldStack>
+              <FieldStack>
+                <Label htmlFor="redaction">Disclosure</Label>
+                <select
+                  id="redaction"
+                  value={redaction}
+                  onChange={(e) => setRedaction(e.target.value as AuditRedactionMode)}
+                  disabled={isLoading}
+                  className="h-11 rounded-lg border border-border bg-secondary/15 px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  {AUDIT_REDACTION_MODES.map((option) => (
+                    <option key={option.id} value={option.id}>{option.label}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  {AUDIT_REDACTION_MODES.find((mode) => mode.id === redaction)?.description}
+                </p>
+              </FieldStack>
+              <FieldStack>
+                <Label htmlFor="expiresInDays" required>Expires after</Label>
+                <Input
+                  id="expiresInDays"
+                  type="number"
+                  min={1}
+                  max={365}
+                  value={expiresInDays}
+                  onChange={(e) => setExpiresInDays(e.target.value)}
+                  disabled={isLoading}
+                  trailingIcon={<span className="text-xs text-muted-foreground">days</span>}
+                />
+              </FieldStack>
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="dateFrom">From date</Label>
-              <Input
-                id="dateFrom"
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="dateTo">To date</Label>
-              <Input
-                id="dateTo"
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                disabled={isLoading}
-              />
-            </div>
-          </div>
 
-          {/* How it works */}
-          <div className="flex flex-col gap-3 rounded-xl border border-dashed border-primary/20 bg-primary/5 p-4">
-            {[
-              "NK derived from SIGN_IN_MESSAGE — same wallet always produces the same key.",
-              "Registered with the Cloak relay so chain notes are encrypted for you.",
-              "Token encodes NK + date range. Revoke any time — auditor loses access instantly.",
-            ].map((t, i) => (
-              <motion.p
-                key={t}
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.16 + i * 0.05, duration: 0.25 }}
-                className="flex items-start gap-2 text-[12.5px] leading-5 text-foreground/85"
+            {regWarning ? <InlineNotice tone="warning">{regWarning}</InlineNotice> : null}
+            {error ? <InlineNotice tone="danger" title="Compliance action failed">{error}</InlineNotice> : null}
+
+            {lastToken ? (
+              <InlineNotice
+                tone="success"
+                title="Token ready"
+                action={
+                  <Button type="button" variant="outline" onClick={() => handleCopy(lastToken, "new")}>
+                    <HugeiconsIcon icon={copied === "new" ? CheckmarkCircle01Icon : Copy01Icon} size={14} strokeWidth={2} aria-hidden="true" />
+                    Copy
+                  </Button>
+                }
               >
-                <HugeiconsIcon
-                  icon={CheckmarkCircle01Icon}
-                  size={13}
-                  strokeWidth={2}
-                  className="mt-0.5 shrink-0 text-primary"
-                />
-                {t}
-              </motion.p>
-            ))}
-          </div>
+                <code className="block truncate font-mono text-xs text-foreground">{lastToken}</code>
+              </InlineNotice>
+            ) : null}
 
-          {!publicKey && (
-            <p className="text-[12.5px] text-amber-400">
-              Connect your wallet to generate a viewing key.
-            </p>
-          )}
-
-          {/* Relay registration warning (non-fatal) */}
-          {regWarning && (
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12px] text-amber-400">
-              {regWarning}
-            </p>
-          )}
-
-          {/* Error */}
-          {error && (
-            <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[12.5px] text-destructive">
-              {error}
-            </p>
-          )}
-
-          {/* Token output */}
-          {lastToken && (
-            <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/5 p-4">
-              <p className="text-[12px] font-medium text-primary">
-                Viewing key ready — share this token with your auditor:
-              </p>
-              <div className="flex items-center gap-2">
-                <code className="min-w-0 flex-1 truncate rounded-md bg-background/60 px-2 py-1.5 font-mono text-[11px] text-foreground/80">
-                  {lastToken}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => handleCopy(lastToken, "new")}
-                  aria-label="Copy token"
-                  className="shrink-0 text-muted-foreground transition-colors hover:text-primary"
-                >
-                  <HugeiconsIcon
-                    icon={copied === "new" ? CheckmarkCircle01Icon : Copy01Icon}
-                    size={14}
-                    strokeWidth={1.8}
-                    className={copied === "new" ? "text-primary" : ""}
-                  />
-                </button>
-              </div>
-              <p className="text-[11px] text-muted-foreground">
-                Auditors paste this at{" "}
-                <a
-                  href="/audit"
-                  className="text-primary underline-offset-2 hover:underline"
-                >
-                  /audit
-                </a>{" "}
-                to run a verifiable scan for the date range you specified.
-              </p>
-            </div>
-          )}
-
-          <FancyButton
-            variant="primary"
-            size="lg"
-            className="self-start"
-            onClick={handleGenerate}
-            disabled={!canGenerate || isLoading}
-          >
-            {isLoading ? (
-              <>
-                <HugeiconsIcon
-                  icon={Loading03Icon}
-                  size={14}
-                  strokeWidth={2.2}
-                  className="animate-spin"
-                />
-                {stateLabel[state]}
-              </>
-            ) : (
-              <>
-                {stateLabel[state]}
-                <HugeiconsIcon icon={ArrowRight01Icon} size={14} strokeWidth={2.2} />
-              </>
-            )}
-          </FancyButton>
-        </motion.section>
-
-        {/* ── Right column ──────────────────────────────────── */}
-        <div className="flex flex-col gap-6">
-
-          {/* Active keys */}
-          <motion.section
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.32, delay: 0.06, ease: [0.22, 1, 0.36, 1] }}
-            className="rounded-xl border border-border/60 bg-card/40 p-6 lg:sticky lg:top-20"
-          >
-            <div className="flex items-center justify-between">
-              <h3 className="text-[14px] font-medium tracking-tight text-foreground">
-                Active keys
-              </h3>
-              <span className="font-mono text-[11px] text-muted-foreground">
-                {activeKeys.length} issued
-              </span>
-            </div>
-
-            {activeKeys.length === 0 ? (
-              <p className="mt-4 text-[12.5px] text-muted-foreground">
-                No active keys yet.
-              </p>
-            ) : (
-              <ul className="mt-4 flex flex-col gap-2">
-                {activeKeys.map((k, i) => {
-                  const token = encodeViewingKeyToken(k);
-                  return (
-                    <motion.li
-                      key={k.id}
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: 0.18 + i * 0.05, duration: 0.28 }}
-                      className="group flex items-start gap-3 rounded-lg border border-border/50 bg-background/40 p-4"
-                    >
-                      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md border border-primary/20 bg-primary/10 text-primary">
-                        <HugeiconsIcon icon={EyeIcon} size={12} strokeWidth={1.8} />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-medium text-foreground">
-                          {k.auditor}
-                        </p>
-                        <p className="text-[11.5px] text-muted-foreground">
-                          {k.dateFrom} → {k.dateTo}
-                        </p>
-                        <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground/70">
-                          {token.slice(0, 20)}…
-                        </p>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex shrink-0 gap-1.5">
-                        <button
-                          type="button"
-                          aria-label="Copy token"
-                          title="Copy token"
-                          onClick={() => handleCopy(token, k.id)}
-                          className="text-muted-foreground transition-colors hover:text-primary"
-                        >
-                          <HugeiconsIcon
-                            icon={copied === k.id ? CheckmarkCircle01Icon : Copy01Icon}
-                            size={13}
-                            strokeWidth={1.8}
-                            className={cn(copied === k.id && "text-primary")}
-                          />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Export CSV"
-                          title="Export scoped CSV"
-                          onClick={() =>
-                            handleExportCsv(k.nkHex, k.dateFrom, k.dateTo, k.id)
-                          }
-                          disabled={!!exporting}
-                          className="text-muted-foreground transition-colors hover:text-primary disabled:opacity-50"
-                        >
-                          <HugeiconsIcon
-                            icon={exporting === k.id ? Loading03Icon : Download01Icon}
-                            size={13}
-                            strokeWidth={1.8}
-                            className={exporting === k.id ? "animate-spin" : ""}
-                          />
-                        </button>
-                        <button
-                          type="button"
-                          aria-label="Revoke key"
-                          title="Revoke — auditor loses access immediately"
-                          onClick={() => handleRevoke(k.id)}
-                          className="text-muted-foreground transition-colors hover:text-destructive"
-                        >
-                          <HugeiconsIcon icon={Delete02Icon} size={13} strokeWidth={1.8} />
-                        </button>
-                      </div>
-                    </motion.li>
-                  );
-                })}
-              </ul>
-            )}
-          </motion.section>
-
-          {/* Revoked keys */}
-          {revokedKeys.length > 0 && (
-            <motion.section
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.32, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
-              className="rounded-xl border border-border/60 bg-card/40 p-6 lg:sticky lg:top-20"
+            <FancyButton
+              type="button"
+              variant="primary"
+              size="xl"
+              disabled={!canGenerate}
+              onClick={handleGenerate}
+              className="justify-self-start"
             >
-              <div className="flex items-center justify-between">
-                <h3 className="text-[14px] font-medium tracking-tight text-foreground">
-                  Revoked
-                </h3>
-                <HugeiconsIcon
-                  icon={FileSecurityIcon}
-                  size={14}
-                  strokeWidth={1.8}
-                  className="text-muted-foreground"
+              {isLoading ? (
+                <HugeiconsIcon icon={Loading03Icon} size={15} strokeWidth={2.2} className="animate-spin" aria-hidden="true" />
+              ) : (
+                <HugeiconsIcon icon={KeyIcon} size={15} strokeWidth={2.2} aria-hidden="true" />
+              )}
+              {state === "signing" ? "Signing" : state === "registering" ? "Registering" : "Generate token"}
+              {!isLoading ? <HugeiconsIcon icon={ArrowRight01Icon} size={15} strokeWidth={2.2} aria-hidden="true" /> : null}
+            </FancyButton>
+          </div>
+        </WorkbenchPanel>
+
+        <WorkbenchPanel title="Issued keys" eyebrow="Manage">
+          <div className="grid gap-3">
+            {activeKeys.length === 0 ? (
+              <InlineNotice>No active keys yet.</InlineNotice>
+            ) : (
+              activeKeys.map((key) => (
+                <KeyRow
+                  key={key.id}
+                  viewingKey={key}
+                  copied={copied === key.id}
+                  exporting={exporting === key.id}
+                  onCopy={() => handleCopy(encodeViewingKeyToken(key), key.id)}
+                  onExport={() => handleExportCsv(key)}
+                  onRevoke={() => handleRevoke(key)}
                 />
-              </div>
-              <ul className="mt-4 flex flex-col gap-2">
-                {revokedKeys.map((k, i) => (
-                  <motion.li
-                    key={k.id}
-                    initial={{ opacity: 0, y: 6 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.24 + i * 0.05, duration: 0.28 }}
-                    className="flex items-start gap-3 rounded-lg border border-border/50 bg-background/40 p-4 opacity-50"
-                  >
-                    <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-md border border-border bg-background/60 text-muted-foreground">
-                      <HugeiconsIcon icon={EyeIcon} size={12} strokeWidth={1.8} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-medium text-muted-foreground line-through">
-                        {k.auditor}
-                      </p>
-                      <p className="text-[11.5px] text-muted-foreground">
-                        {k.dateFrom} → {k.dateTo}
-                      </p>
-                    </div>
-                  </motion.li>
-                ))}
-              </ul>
-            </motion.section>
+              ))
+            )}
+          </div>
+        </WorkbenchPanel>
+
+        {revokedKeys.length > 0 ? (
+          <WorkbenchPanel title="Revoked keys" eyebrow="Archive">
+            <div className="grid gap-2">
+              {revokedKeys.map((key) => (
+                <div key={key.id} className="rounded-lg border border-border/70 bg-secondary/20 p-3 opacity-60">
+                  <p className="text-sm font-medium text-foreground line-through">{key.auditor}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{key.dateFrom} to {key.dateTo}</p>
+                </div>
+              ))}
+            </div>
+          </WorkbenchPanel>
+        ) : null}
+
+        <WorkbenchPanel title="Audit access log" eyebrow="Server">
+          {logs.length === 0 ? (
+            <InlineNotice>No token activity recorded for this wallet in the current server session.</InlineNotice>
+          ) : (
+            <div className="grid gap-2">
+              {logs.slice(0, 8).map((log) => (
+                <div key={log.id} className="grid gap-1 rounded-lg border border-border/60 bg-secondary/15 p-3 text-sm sm:grid-cols-[1fr_auto]">
+                  <div>
+                    <p className="font-medium text-foreground">{log.auditor}</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {log.action} · {log.result}{log.reason ? ` · ${log.reason}` : ""}
+                    </p>
+                  </div>
+                  <p className="font-mono text-xs text-muted-foreground">{new Date(log.at).toLocaleString()}</p>
+                </div>
+              ))}
+            </div>
           )}
-        </div>
+        </WorkbenchPanel>
+      </div>
+    </WorkbenchPage>
+  );
+}
+
+function KeyRow({
+  viewingKey,
+  copied,
+  exporting,
+  onCopy,
+  onExport,
+  onRevoke,
+}: {
+  viewingKey: ViewingKey;
+  copied: boolean;
+  exporting: boolean;
+  onCopy: () => void;
+  onExport: () => void;
+  onRevoke: () => void;
+}) {
+  return (
+    <div className="grid gap-3 rounded-lg border border-border/80 bg-card/45 p-4 sm:grid-cols-[40px_minmax(0,1fr)_auto] sm:items-center">
+      <span className="grid size-10 place-items-center rounded-lg border border-primary/25 bg-primary/10 text-primary">
+        <HugeiconsIcon icon={EyeIcon} size={17} strokeWidth={2} aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <p className="truncate text-sm font-medium text-foreground">{viewingKey.auditor}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {viewingKey.dateFrom} to {viewingKey.dateTo}
+          {viewingKey.expiresAt ? ` · expires ${new Date(viewingKey.expiresAt).toLocaleDateString()}` : ""}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {viewingKey.role ?? "legacy"} · {viewingKey.redaction ?? "legacy disclosure"}
+        </p>
+        <p className="mt-1 truncate font-mono text-xs text-muted-foreground/80">
+          {encodeViewingKeyToken(viewingKey).slice(0, 44)}...
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2 sm:justify-end">
+        <IconButton label="Copy token" onClick={onCopy}>
+          <HugeiconsIcon icon={copied ? CheckmarkCircle01Icon : Copy01Icon} size={15} strokeWidth={2} className={cn(copied && "text-primary")} aria-hidden="true" />
+        </IconButton>
+        <IconButton label="Export CSV" onClick={onExport} disabled={exporting}>
+          <HugeiconsIcon icon={exporting ? Loading03Icon : Download01Icon} size={15} strokeWidth={2} className={cn(exporting && "animate-spin")} aria-hidden="true" />
+        </IconButton>
+        <IconButton label="Revoke key" onClick={onRevoke} danger>
+          <HugeiconsIcon icon={Delete02Icon} size={15} strokeWidth={2} aria-hidden="true" />
+        </IconButton>
       </div>
     </div>
+  );
+}
+
+async function issueAuditCapability(input: {
+  auditor: string;
+  wallet: string;
+  issuer: string;
+  nkHex: string;
+  role: AuditRole;
+  redaction: AuditRedactionMode;
+  dateFrom: string;
+  dateTo: string;
+  expiresInDays: number;
+}): Promise<{ token: string; capability: AuditCapabilityPublic }> {
+  const res = await fetch("/api/audit/issue", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...input,
+      cluster: solanaConfig.cluster,
+    }),
+  });
+  const body = (await res.json()) as {
+    token?: string;
+    capability?: AuditCapabilityPublic;
+    error?: string;
+  };
+  if (!res.ok || !body.token || !body.capability) {
+    throw new Error(body.error ?? `Token issue failed (${res.status})`);
+  }
+  return { token: body.token, capability: body.capability };
+}
+
+function IconButton({
+  label,
+  children,
+  onClick,
+  disabled,
+  danger,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        "inline-flex size-10 items-center justify-center rounded-lg border border-border/75 bg-secondary/25 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
+        danger && "hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive",
+      )}
+    >
+      {children}
+    </button>
   );
 }
