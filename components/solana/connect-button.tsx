@@ -5,6 +5,7 @@ import { WalletReadyState } from "@solana/wallet-adapter-base";
 import Image from "next/image";
 import { useMemo, useState } from "react";
 
+import { WALLET_GUIDE_OPEN_EVENT } from "@/components/app-shell/wallet-guide-dialog";
 import { Button } from "@/components/ui/button";
 import { FancyButton } from "@/components/ui/fancy-button";
 import {
@@ -148,6 +149,14 @@ export function ConnectButton() {
         </DropdownMenuTrigger>
 
         <DropdownMenuContent sideOffset={8} align="end">
+          <DropdownMenuItem
+            onClick={() => {
+              window.dispatchEvent(new CustomEvent(WALLET_GUIDE_OPEN_EVENT));
+            }}
+          >
+            Product guide
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
           <DropdownMenuItem
             onClick={async () => {
               await navigator.clipboard.writeText(address);
