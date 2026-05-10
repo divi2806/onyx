@@ -30,8 +30,8 @@ const TITLES: Record<string, { title: string; subtitle: string }> = {
     subtitle: "Private rebalancing through Cloak swap routes",
   },
   "/compliance": {
-    title: "Compliance",
-    subtitle: "Scoped viewing keys · share exactly what auditors need",
+    title: "Audit Access",
+    subtitle: "Scoped audit tokens · share exactly what auditors need",
   },
   "/invoice": {
     title: "Invoice",
