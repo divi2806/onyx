@@ -4,7 +4,7 @@ import type { ComplianceReport } from "@cloak.dev/sdk";
 import { useWallet } from "@solana/wallet-adapter-react";
 import * as React from "react";
 
-import { solanaConfig } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
 import {
   clearScan,
@@ -38,6 +38,8 @@ const STALE_AFTER_MS = 5 * 60 * 1000;
 
 export function useScannedHistory(): UseScannedHistory {
   const wallet = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const sender = wallet.publicKey?.toBase58() ?? null;
 
   // Stable view of the persisted scan, driven by storage events. Cached by
@@ -58,7 +60,7 @@ export function useScannedHistory(): UseScannedHistory {
         if (
           !detail ||
           (detail.wallet === sender &&
-            detail.cluster === solanaConfig.cluster)
+            detail.cluster === cluster)
         ) {
           notify();
         }
@@ -74,12 +76,12 @@ export function useScannedHistory(): UseScannedHistory {
         window.removeEventListener("storage", onStorage);
       };
     },
-    [sender],
+    [cluster, sender],
   );
 
   const getSnapshot = React.useCallback(() => {
     if (typeof window === "undefined") return cacheRef.current.value;
-    const fresh = loadScan(sender, solanaConfig.cluster);
+    const fresh = loadScan(sender, cluster);
     const serialized = JSON.stringify(fresh);
     const cache = cacheRef.current;
     if (cache.sender === sender && cache.serialized === serialized) {
@@ -87,7 +89,7 @@ export function useScannedHistory(): UseScannedHistory {
     }
     cacheRef.current = { sender, serialized, value: fresh };
     return fresh;
-  }, [sender]);
+  }, [cluster, sender]);
 
   const scan = React.useSyncExternalStore(
     subscribe,
@@ -109,7 +111,7 @@ export function useScannedHistory(): UseScannedHistory {
     }
     if (inflightRef.current) return inflightRef.current;
 
-    const previous = loadScan(sender, solanaConfig.cluster);
+    const previous = loadScan(sender, cluster);
 
     setStatus("scanning");
     setError(null);
@@ -126,6 +128,7 @@ export function useScannedHistory(): UseScannedHistory {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             wallet: sender,
+            cluster,
             untilSignature: previous?.report.lastSignature,
           }),
         });
@@ -136,7 +139,7 @@ export function useScannedHistory(): UseScannedHistory {
         const json = (await res.json()) as { report: ComplianceReport };
 
         const merged = mergeReports(previous?.report ?? null, json.report);
-        const stored = saveScan(sender, solanaConfig.cluster, merged);
+        const stored = saveScan(sender, cluster, merged);
         setStatus("success");
         setProgress(null);
         return stored;
@@ -153,7 +156,7 @@ export function useScannedHistory(): UseScannedHistory {
 
     inflightRef.current = run;
     return run;
-  }, [sender]);
+  }, [cluster, sender]);
 
   // Auto-sync once per (wallet, mount). Refreshes silently if the cache is
   // stale, otherwise no-ops. Uses a ref-keyed guard so the trigger fires for
@@ -163,19 +166,19 @@ export function useScannedHistory(): UseScannedHistory {
     if (!sender) return;
     if (autoSyncedFor.current === sender) return;
     autoSyncedFor.current = sender;
-    const cached = loadScan(sender, solanaConfig.cluster);
+    const cached = loadScan(sender, cluster);
     if (cached && !isScanStale(cached, STALE_AFTER_MS)) return;
     void sync().catch(() => {
       // Surfaced via `error` state.
     });
-  }, [sender, sync]);
+  }, [cluster, sender, sync]);
 
   const reset = React.useCallback(async () => {
     if (!sender) return null;
-    clearScan(sender, solanaConfig.cluster);
+    clearScan(sender, cluster);
     autoSyncedFor.current = null;
     return sync();
-  }, [sender, sync]);
+  }, [cluster, sender, sync]);
 
   const received = React.useMemo(
     () => selectReceivedTransactions(scan?.report),
