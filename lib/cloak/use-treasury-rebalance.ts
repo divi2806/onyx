@@ -15,8 +15,8 @@ import type { PublicKey } from "@solana/web3.js";
 import * as React from "react";
 
 import { applyBufferPolyfill } from "@/lib/buffer-polyfill";
-import { cloakConfig } from "@/lib/cloak/config";
 import { createMemoizedSignMessage } from "@/lib/cloak/sign-message-cache";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
 export type RebalancePhase =
   | "idle"
@@ -47,6 +47,7 @@ const RELAY_SETTLE_DELAY_MS = 4000;
 export function useTreasuryRebalance() {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const { cloakConfig } = useSolanaNetwork();
   const [phase, setPhase] = React.useState<RebalancePhase>("idle");
   const [progress, setProgress] = React.useState<string | null>(null);
   const [proofPercent, setProofPercent] = React.useState<number | null>(null);
@@ -175,7 +176,7 @@ export function useTreasuryRebalance() {
         throw err;
       }
     },
-    [connection, wallet],
+    [cloakConfig, connection, wallet],
   );
 
   return { phase, progress, proofPercent, result, error, run, reset };
