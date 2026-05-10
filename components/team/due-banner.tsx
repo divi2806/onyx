@@ -30,11 +30,11 @@ export function DueBanner({
           transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
           className="overflow-hidden"
         >
-          <div className="relative flex flex-col gap-3 rounded-2xl border border-primary/40 bg-primary/10 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+          <div className="relative flex flex-col gap-3 rounded-lg border border-amber-400/25 bg-amber-400/10 p-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-start gap-3">
               <span
                 aria-hidden="true"
-                className="grid size-9 shrink-0 place-items-center rounded-xl bg-primary/20 text-primary"
+                className="grid size-10 shrink-0 place-items-center rounded-lg border border-amber-400/25 bg-background/35 text-amber-300"
               >
                 <HugeiconsIcon
                   icon={AlarmClockIcon}

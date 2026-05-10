@@ -10,8 +10,8 @@ const STYLES: Record<
   "mainnet-beta": null,
   devnet: {
     label: "Devnet",
-    dot: "bg-primary",
-    chip: "border-primary/25 bg-primary/10 text-primary/80",
+    dot: "bg-amber-400",
+    chip: "border-amber-400/25 bg-amber-400/10 text-amber-300",
   },
   testnet: {
     label: "Testnet",
@@ -32,7 +32,7 @@ export function ClusterBadge({ className }: { className?: string }) {
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1",
+        "inline-flex h-10 items-center gap-1.5 rounded-lg border px-3",
         "text-[10.5px] font-semibold tracking-wide uppercase",
         style.chip,
         className,
