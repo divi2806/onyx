@@ -19,9 +19,8 @@ import { PublicKey } from "@solana/web3.js";
 import * as React from "react";
 
 import { applyBufferPolyfill } from "@/lib/buffer-polyfill";
-import { solanaConfig } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
-import { cloakConfig } from "./config";
 import { isStaleNoteError, isSubmittingStatus } from "./fast-send-core";
 import {
   bigintToHex,
@@ -115,6 +114,8 @@ export type RunBatchArgs = {
 export function useBatchPayroll() {
   const { connection } = useConnection();
   const wallet = useWallet();
+  const { cloakConfig, config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const [state, setState] = React.useState<BatchPayrollState>(initialState);
   const cancelRef = React.useRef(false);
 
@@ -255,10 +256,10 @@ export function useBatchPayroll() {
       // Persist the deposited UTXO immediately so it's recoverable if anything
       // below blows up.
       const depositedUtxo = depositResult.outputUtxos[0];
-      const orphanId = `${senderBase58}:${solanaConfig.cluster}:${depositResult.signature}`;
+      const orphanId = `${senderBase58}:${cluster}:${depositResult.signature}`;
       const orphanRecord: OrphanUtxoRecord = {
         id: orphanId,
-        cluster: solanaConfig.cluster,
+        cluster,
         sender: senderBase58,
         utxo: serializeUtxo(depositedUtxo, ephemeralKeypair),
         totalRaw: total.toString(),
@@ -268,7 +269,7 @@ export function useBatchPayroll() {
         createdAt: Date.now(),
         depositSignature: depositResult.signature,
       };
-      saveOrphan(senderBase58, solanaConfig.cluster, orphanRecord);
+      saveOrphan(senderBase58, cluster, orphanRecord);
 
       setState((s) => ({
         ...s,
@@ -306,7 +307,7 @@ export function useBatchPayroll() {
             ok: true,
             payoutSig: rowOutcome.signature,
           });
-          updateOrphan(senderBase58, solanaConfig.cluster, orphanId, {
+          updateOrphan(senderBase58, cluster, orphanId, {
             utxo: serializeUtxo(currentUtxo, ephemeralKeypair),
             rowsRemaining: rows.length - i - 1,
           });
@@ -346,7 +347,7 @@ export function useBatchPayroll() {
       // If every row confirmed, the change UTXO should be empty. Clear the
       // orphan record. Otherwise, leave it for the recovery flow.
       if (failed === 0) {
-        clearOrphan(senderBase58, solanaConfig.cluster, orphanId);
+        clearOrphan(senderBase58, cluster, orphanId);
       }
 
       setState((s) => ({
@@ -489,7 +490,7 @@ export function useBatchPayroll() {
         }
       }
     },
-    [connection, wallet],
+    [cloakConfig, cluster, connection, wallet],
   );
 
   return { ...state, run, reset, cancel };
