@@ -1,4 +1,5 @@
 import * as React from "react";
+import Image from "next/image";
 
 import { cn } from "@/lib/utils";
 
@@ -17,12 +18,15 @@ function PublicLogo({
   title?: string;
 }) {
   return (
-    <img
+    <Image
       src={src}
       alt={title ?? ""}
+      width={24}
+      height={24}
       aria-hidden={title ? undefined : true}
       className={cn("size-6", className)}
       draggable={false}
+      unoptimized
     />
   );
 }
@@ -120,4 +124,3 @@ export const PROTOCOL_LOGOS = {
 } as const;
 
 export type ProtocolId = keyof typeof PROTOCOL_LOGOS;
-
