@@ -47,14 +47,7 @@ export async function POST(req: Request) {
       typeof body.expiresInDays === "number"
         ? Math.max(1, Math.min(365, Math.floor(body.expiresInDays)))
         : 30;
-    const cluster =
-      typeof body.cluster === "string" ? (body.cluster as SolanaCluster) : solanaConfig.cluster;
-    if (cluster !== solanaConfig.cluster) {
-      return NextResponse.json(
-        { error: `Token cluster ${cluster} does not match server cluster ${solanaConfig.cluster}.` },
-        { status: 400 },
-      );
-    }
+    const cluster = parseCluster(body.cluster);
 
     const { token, capability } = issueAuditToken({
       auditor,
@@ -76,6 +69,11 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+}
+
+function parseCluster(value: unknown): SolanaCluster {
+  if (value === "mainnet-beta" || value === "devnet") return value;
+  return solanaConfig.cluster;
 }
 
 function requireText(value: unknown, field: string): string {
@@ -103,7 +101,7 @@ function requirePubkey(value: unknown, field: string): string {
 
 function requireNk(value: unknown): string {
   const text = requireText(value, "nkHex").toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(text)) throw new Error("Invalid viewing key.");
+  if (!/^[0-9a-f]{64}$/.test(text)) throw new Error("Invalid audit key material.");
   return text;
 }
 
