@@ -17,7 +17,7 @@ const NAV: { heading: string; items: { label: string; href: string }[] }[] = [
       { label: "Pay", href: "/pay" },
       { label: "Payroll", href: "/payroll" },
       { label: "History", href: "/history" },
-      { label: "Compliance", href: "/compliance" },
+      { label: "Audit Access", href: "/compliance" },
     ],
   },
   {
