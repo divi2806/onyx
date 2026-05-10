@@ -7,6 +7,8 @@ type CloakClusterConfig = {
   relayUrl: string;
 };
 
+export type CloakConfig = CloakClusterConfig;
+
 const CLUSTER_CONFIG: Partial<Record<SolanaCluster, CloakClusterConfig>> = {
   "mainnet-beta": {
     programId: new PublicKey("zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW"),
@@ -18,16 +20,28 @@ const CLUSTER_CONFIG: Partial<Record<SolanaCluster, CloakClusterConfig>> = {
   },
 };
 
-const fromCluster = CLUSTER_CONFIG[solanaConfig.cluster];
-if (!fromCluster) {
-  throw new Error(
-    `Cloak is not configured for cluster "${solanaConfig.cluster}". Set NEXT_PUBLIC_SOLANA_CLUSTER to "mainnet-beta" or "devnet".`,
-  );
+function requireCloakConfig(cluster: SolanaCluster): CloakClusterConfig {
+  const fromCluster = CLUSTER_CONFIG[cluster];
+  if (!fromCluster) {
+    throw new Error(
+      `Cloak is not configured for cluster "${cluster}". Set NEXT_PUBLIC_SOLANA_CLUSTER to "mainnet-beta" or "devnet".`,
+    );
+  }
+  return fromCluster;
 }
 
-export const cloakConfig = {
-  programId: fromCluster.programId,
-  relayUrl: process.env.NEXT_PUBLIC_CLOAK_RELAY_URL ?? fromCluster.relayUrl,
-} as const;
+export function getCloakConfig(cluster: SolanaCluster): CloakConfig {
+  const fromCluster = requireCloakConfig(cluster);
+  const relayOverride =
+    cluster === solanaConfig.cluster
+      ? process.env.NEXT_PUBLIC_CLOAK_RELAY_URL
+      : undefined;
+  return {
+    programId: fromCluster.programId,
+    relayUrl: relayOverride ?? fromCluster.relayUrl,
+  };
+}
+
+export const cloakConfig = getCloakConfig(solanaConfig.cluster);
 
 export const SHIELD_DEPOSIT_MIN_LAMPORTS = 10_000_000n;
