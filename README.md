@@ -1,211 +1,161 @@
 # Onyx
 
-**Confidential payment infrastructure for onchain teams.**
+Confidential payment operations for Solana teams.
 
-Onyx makes it possible to pay contributors, vendors, and contractors on Solana without publishing amounts, recipients, or schedules on the public ledger — while keeping full audit-ready records for the people you choose.
+Onyx lets teams send payroll, vendor payments, invoices, compliance reports, and treasury rebalances without exposing recipients, amounts, or schedules as plain public wallet activity.
 
-- **Website:** [Onyx](https://onyx-red.vercel.app/)
+- Frontend: https://onyx-red.vercel.app/
+- Cloak docs index: `llms.txt`
+- Architecture notes: `ARCHITECTURE.md`
+- Cloak integration notes: `INTEGRATION.md`
 
----
+## Problem
 
-## The problem
+Every normal SOL, USDC, or USDT transfer on Solana is permanently public. Payroll runs expose contributor rates. Vendor payments expose commercial terms. Treasury operations expose strategy. Anyone can index it.
 
-Every SOL, USDC, and USDT transfer on Solana is permanently public. Any wallet that pays a contractor, runs a treasury rebalance, or runs weekly payroll is creating a permanent, indexed record of salaries, vendor rates, and financial strategy. Competitors, recruits, and MEV bots can all read it.
+Onyx is for:
 
-Privacy on Solana has historically required either custodial trust (hand your funds to a mixer) or complex operational work. Onyx removes both barriers.
+- DAOs and protocols paying contributors.
+- Founders paying contractors and vendors.
+- Treasury teams running rebalances or stablecoin operations.
+- Finance and compliance leads who need auditability without public disclosure.
 
-**Who Onyx is for:**
-- DAOs and protocols running contributor payroll (10–200+ recipients)
-- Treasury teams executing buybacks, rebalances, or grant programs
-- Founders paying contractors whose rates should stay off public dashboards
-- Finance leads who need a full audit trail without exposing it to everyone
+The product goal is not to hide records from the operator. It is to keep business payment details private by default while preserving scoped, intentional audit access.
 
----
+## Why Cloak Is Central
 
-## How Onyx uses the Cloak SDK
+Onyx uses Cloak as the privacy layer. The app is a frontend and workflow surface around Cloak SDK primitives; the confidential transfer semantics come from Cloak's shielded UTXO model, Groth16 proofs, relay, and viewing-key scan path.
 
-Onyx is built entirely on [Cloak](https://docs.cloak.ag) — a UTXO-based shielded pool on Solana with Groth16 zero-knowledge proofs. The Cloak SDK (`@cloak.dev/sdk`) is not an optional dependency — it is the entire privacy layer.
+The TypeScript SDK is used for:
 
-### What Cloak provides
-
-| Primitive | SDK function | What Onyx uses it for |
+| Onyx flow | Cloak SDK primitive | Why it matters |
 |---|---|---|
-| Shielded deposit | `transact()` | Moving funds into the ZK pool |
-| Shielded withdrawal | `fullWithdraw()` | Delivering funds to a recipient's wallet |
-| UTXO keypairs | `generateUtxoKeypair()` | Creating ephemeral shielded notes |
-| Viewing key derivation | `generateCloakKeys()` + `expandSpendKey()` | Deriving the NK from a wallet signature |
-| Relay registration | `registerViewingKey()` | Registering the NK so chain notes are encrypted for the user |
-| Compliance scan | `scanTransactions()` | Scanning the shielded pool with a viewing key |
-| CSV export | `formatComplianceCsv(toComplianceReport())` | Producing audit-ready reports |
-| Private swap | `swapWithChange()` | SOL shielded treasury rebalance into SPL outputs |
+| Private send | `transact()` then `fullWithdraw()` | Deposit into the shield pool, then pay out privately. |
+| Payroll | `transact()` then repeated `partialWithdraw()` | One aggregate private deposit with per-recipient private payouts. |
+| Residual recovery | `fullWithdraw()` | Reclaim leftover shielded UTXO balances after interrupted payroll. |
+| Treasury rebalance | `transact()` then `swapWithChange()` | Shield SOL before privately swapping to supported SPL outputs. |
+| Audit access | `generateCloakKeys()`, `expandSpendKey()`, `registerViewingKey()`, `scanTransactions()` | Derive/register Cloak viewing keys behind an opaque audit access token, then scan private history only when explicitly authorized. |
+| Audit export | `toComplianceReport()` and `formatComplianceCsv()` | Convert scoped scan results into auditor-readable reports. |
 
-### Privacy model
+The app keeps amount math in base units and `bigint`, follows SDK retry behavior for stale roots, and never asks users to paste private keys.
 
-A payment is never a direct account-to-account transfer. Every send goes through a two-phase ZK flow:
+## Deployed Programs And Networks
 
-1. **Deposit.** The sender calls `transact()` with `externalAmount > 0`. A Groth16 proof is generated in the browser, verified on-chain, and a new shielded UTXO is added to the Merkle tree.
-2. **Withdraw.** The SDK calls `fullWithdraw()` with `externalAmount < 0`. A second proof delivers funds to the recipient's ATA. On-chain, both steps are opaque — amounts, sender, and recipient are not revealed.
+| Network | Cloak program | Relay | Tokens |
+|---|---|---|---|
+| Devnet | `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` | `https://api.devnet.cloak.ag` | SOL, mock USDC |
+| Mainnet | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` | `https://api.cloak.ag` | SOL, USDC, USDT |
 
-The on-chain Cloak program (`zh1eLd6r…6qRkW` on mainnet, `Zc1kHfp4…us27h` on devnet) verifies every proof, appends commitments to a 32-deep Merkle tree, and records nullifiers to prevent double-spending.
-
-### Viewing key model (Scoped Compliance — Feature #1)
-
-Onyx derives each user's viewing key (NK) from a deterministic wallet signature:
-
-```
-wallet.signMessage(SIGN_IN_MESSAGE)
-  → generateCloakKeys(signature)
-  → expandSpendKey(keys.spend.sk_spend)
-  → nsk  ← this is the NK
-```
-
-The NK is registered with the Cloak relay via `registerViewingKey()`, which causes the relay to write chain notes encrypted to that NK for every future transaction by this wallet. The same NK is then used as `viewingKeyNk` in `scanTransactions()` to decrypt those notes during compliance scans.
-
-**Scoped keys:** The NK is always the same for a given wallet. Onyx now wraps that NK in an opaque server-issued audit capability token. The token is AES-GCM sealed with `ONYX_AUDIT_TOKEN_SECRET`, carries an immutable wallet/date scope, role, expiry, and redaction mode, and is enforced by `/api/audit/scan`. The auditor never receives the raw NK or controls scan timestamps. Revocation and access logs are enforced in the active app-server runtime.
-
----
-
-## Current network
-
-By default the app runs on **devnet**.
-
-| Network | Program ID | Relay |
-|---|---|---|
-| Devnet (default) | `Zc1kHfp4rajSMeASFDwFFgkHRjv7dFQuLheJoQus27h` | `https://api.devnet.cloak.ag` |
-| Mainnet | `zh1eLd6rSphLejbFfJEneUwzHRfMKxgzrgkfwA6qRkW` | `https://api.cloak.ag` |
-
-To switch to mainnet, add to `.env.local`:
-
-```
-NEXT_PUBLIC_SOLANA_CLUSTER=mainnet-beta
-NEXT_PUBLIC_SOLANA_RPC_URL=https://your-helius-or-quicknode-rpc-url
-```
-
----
+The topbar network badge switches the client between Devnet and Mainnet. The selection is stored in localStorage and drives the wallet connection endpoint, token registry, local records, explorer links, Cloak relay/program selection, quotes, and scan requests.
 
 ## Features
 
-### Working today
-
-| Feature | Route | Description |
+| Route | Feature | What the user does |
 |---|---|---|
-| Private send | `/pay` | Single-recipient shielded transfer. Groth16 proof generated in browser. |
-| Batch payroll | `/payroll` | Multi-recipient disbursement via CSV. Each row is an independent shielded tx. |
-| Team management | `/team` | Persistent recipient list with recurring payment schedules. |
-| Payment ledger | `/history` | Full local history of outbound transfers. |
-| Scoped viewing keys | `/compliance` | Derive NK → register with relay → issue sealed role/date/redaction-scoped audit capabilities. |
-| Audit portal | `/audit` | Stateless auditor page: paste opaque token → server-enforced scan → redacted report → CSV. |
-| Treasury rebalance | `/treasury` | Private SOL shield deposit followed by Cloak `swapWithChange()` into supported stablecoin outputs. |
-| Invoice links | `/invoice` | Create expiring QR/shareable `/claim?v=…` links for privacy-preserving cross-border requests. |
-| Claim page | `/claim` | Payer visits link, connects wallet, pays through the shielded pool without Cloak setup. |
+| `/pay` | Private send | Enter recipient and amount, then sign shield deposit and payout transactions. |
+| `/payroll` | Batch payroll | Upload CSV, validate rows, run private payouts, export receipts, recover residual UTXOs if needed. |
+| `/team` | Recipient registry | Save wallets, defaults, notes, and recurring schedules per network. |
+| `/history` | Ledger | Review browser-saved outbound receipts and scan for received Cloak payments. |
+| `/treasury` | Private rebalance | Quote and execute shielded SOL to supported stablecoin outputs. |
+| `/compliance` | Audit access desk | Create opaque audit access tokens for auditors without sharing raw viewing keys. |
+| `/invoice` | Claim links | Create expiring payment request links with QR support. |
+| `/claim` | Payer flow | Pay a request through the shielded route. |
+| `/audit` | Auditor portal | Paste an opaque audit token and export scoped reports. |
 
-### Operational hardening
+## Setup
 
-- Payroll runs write a batch proof receipt: aggregate deposit signature, per-recipient payout signatures, failed rows, and downloadable CSV.
-- If a payroll run stops after the aggregate deposit, Onyx stores the residual shielded UTXO and exposes a recovery panel to reclaim it.
-- Audit capability tokens support expiry, role, redaction mode, server-side revoke checks, and access logs.
-
----
-
-## Setup and running locally
-
-### Prerequisites
+Prerequisites:
 
 - Node 18+
-- pnpm (`npm install -g pnpm`)
+- pnpm
+- A browser wallet that supports Solana wallet standard or wallet-adapter.
 
-### Install
+Install:
 
 ```bash
-git clone <repo>
-cd onyx
 pnpm install
 ```
 
-### Environment (optional)
-
-Create `.env.local` to override defaults:
+Environment defaults work for Devnet. Create `.env.local` only when you need overrides:
 
 ```env
-# Network (default: devnet)
+# Default client network. The app can still switch between Devnet and Mainnet at runtime.
 NEXT_PUBLIC_SOLANA_CLUSTER=devnet
 
-# RPC endpoint — use Helius or QuickNode for production
+# Client RPC. Use a paid provider for production Mainnet.
 NEXT_PUBLIC_SOLANA_RPC_URL=https://api.devnet.solana.com
 
-# Relay (defaults come from the SDK config, no override needed for standard use)
+# Optional websocket override.
+# NEXT_PUBLIC_SOLANA_WS_URL=wss://api.devnet.solana.com
+
+# Optional Cloak relay override for the default cluster.
 # NEXT_PUBLIC_CLOAK_RELAY_URL=https://api.devnet.cloak.ag
 
-# Server-side RPC for scanning (isolates scan load from client RPC credits)
+# Server-side scan RPC. Recommended for production so scans do not consume browser RPC credits.
 # CLOAK_SCAN_RPC_URL=https://your-server-rpc
 
-# Secret used to seal audit capability tokens. Set this in production.
-# ONYX_AUDIT_TOKEN_SECRET=replace-with-random-32-byte-secret
+# Required in production for sealed audit capability tokens.
+# ONYX_AUDIT_TOKEN_SECRET=replace-with-a-random-server-only-secret
 
-# Optional quote config for /treasury receive estimates
+# Optional treasury quote configuration.
 # JUPITER_QUOTE_URL=https://lite-api.jup.ag/swap/v1/quote
-# JUPITER_API_KEY=your-jupiter-pro-key
+# JUPITER_API_KEY=your-jupiter-api-key
 ```
 
-### Run
+Run locally:
 
 ```bash
-pnpm dev      # http://localhost:3000
-pnpm build    # production bundle
-pnpm start    # serve production build
-pnpm lint     # ESLint
+pnpm dev
 ```
 
----
+Other scripts:
+
+```bash
+pnpm build
+pnpm start
+pnpm lint
+pnpm test:pay
+pnpm test:faucet
+pnpm test:payroll
+```
+
+## RPC And SDK Status
+
+The project currently uses:
+
+- `@cloak.dev/sdk` `^0.1.6`
+- `@cloak.dev/sdk-devnet` `0.1.5-devnet.1`
+- `@solana/web3.js` `^1.98.0`
+
+As of this update, the published npm versions for both Cloak packages match the installed versions. No SDK update is required for the network switch, modal, or docs changes.
+
+RPC guidance:
+
+- Devnet is fine with the default public RPC for basic testing.
+- For a hackathon demo, you do not need separate Devnet and Mainnet RPC env vars. Set `NEXT_PUBLIC_SOLANA_CLUSTER` and `NEXT_PUBLIC_SOLANA_RPC_URL` for your default cluster; if the user switches to the other cluster, Onyx falls back to that cluster's public RPC.
+- Mainnet should use a paid Helius, QuickNode, Triton, or equivalent RPC.
+- Set `CLOAK_SCAN_RPC_URL` in production so audit/history scans use a server-side RPC budget.
+- The app does not currently require `NEXT_PUBLIC_DEVNET_RPC_URL` or `NEXT_PUBLIC_MAINNET_RPC_URL`. Add those only if you want per-cluster paid RPC overrides later.
+- Public Mainnet RPC is not recommended for production and may fail under browser-origin or rate-limit pressure.
 
 ## Architecture
 
-```
-app/
-  (app)/          ← Sidebar layout, wallet-gated routes
-    pay/          ← Single private send
-    payroll/      ← Batch payroll (CSV)
-    team/         ← Recipient management
-    history/      ← Payment ledger
-    compliance/   ← Viewing key generation + management
-    invoice/      ← Create claim links
-    treasury/     ← Cloak private treasury rebalance
-  audit/          ← Public auditor portal (no wallet required)
-  claim/          ← Public payer page (wallet required to pay)
-  api/
-    scan-received/  ← Server-side scanTransactions() endpoint
-    audit/           ← Opaque audit token issue/inspect/scan/revoke/logs
+See `ARCHITECTURE.md` for the full architecture. At a high level:
 
-lib/
-  cloak/
-    config.ts           ← Program IDs and relay URLs per cluster
-    derive-nk.ts        ← SIGN_IN_MESSAGE → generateCloakKeys → expandSpendKey → NK
-    fast-send-core.ts   ← transact() + fullWithdraw() orchestration
-    use-batch-payroll.ts← Batch payroll hook
-    use-treasury-rebalance.ts ← transact() + swapWithChange() orchestration
-    viewing-keys.ts     ← Viewing key localStorage CRUD + token encode/decode
-    use-viewing-keys.ts ← useSyncExternalStore hook for viewing keys
-    invoice.ts          ← Invoice localStorage CRUD + claim link encode/decode
-    tokens.ts           ← SOL/USDC/USDT mint registry per cluster
-  solana/
-    config.ts     ← Cluster + RPC URL from env
-    providers.tsx ← WalletProvider + ConnectionProvider
-```
+- Next.js App Router owns the UI, public pages, and API routes.
+- `lib/solana/network.tsx` owns the active client network.
+- `lib/solana/providers.tsx` wires wallet-adapter and `ConnectionProvider`.
+- `lib/cloak/*` owns Cloak configuration, token registry, transaction hooks, viewing keys, invoices, and local receipts.
+- API routes handle quote lookup, audit access token issue/scan/revoke/logs, and server-side received-payment scans.
 
----
+## Security Notes
 
-## Stack
-
-- **Next.js 16** (App Router, Turbopack) + React 19
-- **TypeScript 5** strict
-- **`@cloak.dev/sdk`** — shielded UTXO transactions, ZK proof generation, compliance scanning
-- **`@solana/web3.js`** + `@solana/wallet-adapter-react` — RPC connection, wallet signing
-- **Tailwind CSS 4** + shadcn/ui + Base UI primitives
-- **Framer Motion** (`motion/react`) for page and component transitions
-- **Hugeicons** (`@hugeicons/core-free-icons`) icon set
-
----
+- Never expose `ONYX_AUDIT_TOKEN_SECRET`; it is server-only and must not use `NEXT_PUBLIC_`.
+- Raw Cloak viewing-key material and NK values must not be logged.
+- Audit access tokens are opaque capability tokens. A user creates one on `/compliance`, shares it with an auditor, and the auditor pastes it into `/audit` to scan/export only the approved scope.
+- Audit access tokens can be revoked only within the active app-server runtime unless durable storage is added.
+- Browser localStorage is used for team records, invoices, payment receipts, audit access metadata, and selected network.
 
 ## License
 
-[LICENSE](LICENSE)
+See `LICENSE`.
