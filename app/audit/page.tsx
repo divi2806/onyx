@@ -75,7 +75,7 @@ export default function AuditPage() {
   async function handleScan() {
     const trimmed = token.trim();
     if (!trimmed.startsWith("onyx_audit_v2.")) {
-      setError("Paste a server-issued Onyx audit token from the Compliance page.");
+      setError("Paste a server-issued Onyx audit access token from the Audit Access page.");
       setState("error");
       return;
     }
@@ -169,16 +169,16 @@ export default function AuditPage() {
               <HugeiconsIcon icon={FileSecurityIcon} size={14} strokeWidth={2} aria-hidden="true" />
               External audit
             </div>
-            <h1 className="mt-4 text-3xl font-semibold tracking-normal sm:text-4xl">Viewing-key scan</h1>
+            <h1 className="mt-4 text-3xl font-semibold tracking-normal sm:text-4xl">Audit access scan</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Paste a token issued by an Onyx wallet. The scan returns only the authorized wallet and date range.
+              Paste the audit access token shared by an Onyx wallet owner. The scan returns only the wallet, date range, and disclosure level authorized in that token.
             </p>
           </div>
 
-          <WorkbenchPanel title="Token input" eyebrow="Scan">
+          <WorkbenchPanel title="Audit token input" eyebrow="Scan">
             <div className="grid gap-5">
               <FieldStack>
-                <Label htmlFor="vkToken" required>Viewing key token</Label>
+                <Label htmlFor="vkToken" required>Audit access token</Label>
                 <Input
                   id="vkToken"
                   value={token}
@@ -194,7 +194,7 @@ export default function AuditPage() {
                     {capability.scope.from} to {capability.scope.to} · {capability.role} · {capability.redaction}
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Tokens are opaque server-enforced capabilities. The NK and scope are not editable here.</p>
+                  <p className="text-xs text-muted-foreground">The token is opaque. The raw Cloak viewing key and scope cannot be edited here.</p>
                 )}
               </FieldStack>
 
@@ -229,11 +229,12 @@ export default function AuditPage() {
         </div>
 
         <aside className="lg:sticky lg:top-8 lg:self-start">
-          <WorkbenchPanel title="Audit scope" eyebrow="Read only">
+          <WorkbenchPanel title="How auditors use it" eyebrow="Read only">
             <div className="grid gap-3 text-sm text-muted-foreground">
               <p>No wallet connection is required.</p>
-              <p>The server decrypts the token and enforces the wallet, date range, expiry, and redaction mode.</p>
-              <p>CSV export uses the redacted report returned by the scan endpoint.</p>
+              <p>Paste the audit access token shared by the wallet owner.</p>
+              <p>The server decrypts the token, enforces wallet, date, expiry, and redaction scope, then scans Cloak.</p>
+              <p>CSV export uses only the scoped report returned by the scan endpoint.</p>
             </div>
           </WorkbenchPanel>
         </aside>
