@@ -18,13 +18,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
         data-slot="input-root"
         data-invalid={invalid ? "true" : undefined}
         className={cn(
-          "group/input relative flex h-10 w-full items-center gap-2.5 rounded-xl",
-          "border border-border bg-secondary/30 px-3.5",
+          "group/input relative flex h-11 w-full items-center gap-2.5 rounded-lg",
+          "border border-border bg-secondary/15 px-3.5",
           "transition-all duration-150",
-          "focus-within:border-primary/50 focus-within:bg-secondary/50",
-          "focus-within:shadow-[0_0_0_3px_oklch(0.68_0.24_285_/_15%)]",
+          "focus-within:border-primary/50 focus-within:bg-secondary/25",
           "data-[invalid=true]:border-destructive/60 data-[invalid=true]:focus-within:border-destructive",
-          "data-[invalid=true]:shadow-[0_0_0_3px_oklch(0.62_0.22_28_/_12%)]",
           className,
         )}
       >
