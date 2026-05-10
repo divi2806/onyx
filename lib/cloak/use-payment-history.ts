@@ -3,7 +3,7 @@
 import { useWallet } from "@solana/wallet-adapter-react";
 import * as React from "react";
 
-import { solanaConfig } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
 import { loadPayments, type PaymentRecord } from "./payment-history";
 
@@ -14,6 +14,8 @@ export function usePaymentHistory(): {
   ready: boolean;
 } {
   const wallet = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const sender = wallet.publicKey?.toBase58() ?? null;
 
   const subscribe = React.useCallback(
@@ -24,7 +26,7 @@ export function usePaymentHistory(): {
           .detail;
         if (
           !detail ||
-          (detail.sender === sender && detail.cluster === solanaConfig.cluster)
+          (detail.sender === sender && detail.cluster === cluster)
         ) {
           notify();
         }
@@ -40,7 +42,7 @@ export function usePaymentHistory(): {
         window.removeEventListener("storage", onStorage);
       };
     },
-    [sender],
+    [cluster, sender],
   );
 
   const cacheRef = React.useRef<{
@@ -51,7 +53,7 @@ export function usePaymentHistory(): {
 
   const getSnapshot = React.useCallback(() => {
     if (typeof window === "undefined") return EMPTY;
-    const fresh = loadPayments(sender, solanaConfig.cluster);
+    const fresh = loadPayments(sender, cluster);
     const serialized = JSON.stringify(fresh);
     const cache = cacheRef.current;
     if (cache.sender === sender && cache.serialized === serialized) {
@@ -59,7 +61,7 @@ export function usePaymentHistory(): {
     }
     cacheRef.current = { sender, serialized, value: fresh };
     return fresh;
-  }, [sender]);
+  }, [cluster, sender]);
 
   const records = React.useSyncExternalStore(
     subscribe,
