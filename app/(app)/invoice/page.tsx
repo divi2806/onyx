@@ -33,7 +33,7 @@ import {
   isShieldTokenSupported,
   type ShieldTokenId,
 } from "@/lib/cloak/tokens";
-import { solanaConfig } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import { cn } from "@/lib/utils";
 
 const TOKENS = [
@@ -46,6 +46,8 @@ const EMPTY: Invoice[] = [];
 
 export default function InvoicePage() {
   const { publicKey } = useWallet();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const wallet = publicKey?.toBase58() ?? "";
   const invoices = useInvoices(wallet);
 
@@ -57,7 +59,7 @@ export default function InvoicePage() {
   const [lastInvoice, setLastInvoice] = React.useState<Invoice | null>(null);
   const [copied, setCopied] = React.useState<string | null>(null);
 
-  const supported = isShieldTokenSupported(token);
+  const supported = isShieldTokenSupported(token, cluster);
   const validAmount = /^\d+(\.\d+)?$/.test(amount.trim()) && Number(amount.trim()) > 0;
   const canCreate = !!wallet && validAmount && supported;
 
@@ -66,11 +68,11 @@ export default function InvoicePage() {
     const baseUrl =
       typeof window !== "undefined" ? window.location.origin : "https://onyx-red.vercel.app";
     const invoice = createInvoice(
-      solanaConfig.cluster,
+      cluster,
       wallet,
       {
         amount: amount.trim(),
-        mint: getShieldToken(token)!.mint.toBase58(),
+        mint: getShieldToken(token, cluster)!.mint.toBase58(),
         symbol: token,
         memo: memo.trim() || undefined,
         payerMemo: payerMemo.trim() || undefined,
@@ -119,7 +121,7 @@ export default function InvoicePage() {
         <WorkbenchPanel title="Create request" eyebrow="Builder">
           <div className="grid gap-5">
             {!wallet ? <InlineNotice tone="warning">Connect your wallet to create an invoice link.</InlineNotice> : null}
-            {!supported ? <InlineNotice tone="danger">{token} is unavailable on {solanaConfig.cluster}.</InlineNotice> : null}
+            {!supported ? <InlineNotice tone="danger">{token} is unavailable on {cluster}.</InlineNotice> : null}
 
             <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_260px]">
               <FieldStack>
@@ -235,11 +237,13 @@ function TokenSwitch({
   value: ShieldTokenId;
   onChange: (id: ShieldTokenId) => void;
 }) {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   return (
     <div className="grid grid-cols-3 gap-1 rounded-lg border border-border/70 bg-secondary/30 p-1">
       {TOKENS.map((token) => {
         const active = value === token.id;
-        const supported = isShieldTokenSupported(token.id);
+        const supported = isShieldTokenSupported(token.id, cluster);
         return (
           <button
             key={token.id}
@@ -323,6 +327,8 @@ function QrPreview({ url }: { url: string }) {
 }
 
 function useInvoices(wallet: string): Invoice[] {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const cacheRef = React.useRef<{ wallet: string; json: string; value: Invoice[] }>({
     wallet: "",
     json: "[]",
@@ -334,7 +340,7 @@ function useInvoices(wallet: string): Invoice[] {
       if (typeof window === "undefined") return () => {};
       const onCustom = (event: Event) => {
         const detail = (event as CustomEvent<{ wallet: string; cluster: string }>).detail;
-        if (!detail || (detail.wallet === wallet && detail.cluster === solanaConfig.cluster)) notify();
+        if (!detail || (detail.wallet === wallet && detail.cluster === cluster)) notify();
       };
       const onStorage = (event: StorageEvent) => {
         if (event.key?.startsWith("onyx:invoices:v1:")) notify();
@@ -346,18 +352,18 @@ function useInvoices(wallet: string): Invoice[] {
         window.removeEventListener("storage", onStorage);
       };
     },
-    [wallet],
+    [cluster, wallet],
   );
 
   const getSnapshot = React.useCallback(() => {
     if (!wallet || typeof window === "undefined") return EMPTY;
-    const fresh = loadInvoices(solanaConfig.cluster, wallet);
+    const fresh = loadInvoices(cluster, wallet);
     const json = JSON.stringify(fresh);
     const cache = cacheRef.current;
     if (cache.wallet === wallet && cache.json === json) return cache.value;
     cacheRef.current = { wallet, json, value: fresh };
     return fresh;
-  }, [wallet]);
+  }, [cluster, wallet]);
 
   return React.useSyncExternalStore(subscribe, getSnapshot, () => EMPTY);
 }
