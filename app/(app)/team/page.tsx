@@ -38,7 +38,8 @@ import {
   isShieldTokenSupported,
   type ShieldTokenId,
 } from "@/lib/cloak/tokens";
-import { solanaConfig } from "@/lib/solana/config";
+import type { SolanaCluster } from "@/lib/solana/config";
+import { useSolanaNetwork } from "@/lib/solana/network";
 import {
   addMember,
   clearSchedule,
@@ -91,6 +92,8 @@ type DialogState =
 export default function TeamPage() {
   const { members, ready } = useTeam();
   const due = useDueMembers();
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   const [query, setQuery] = React.useState("");
   const [dialog, setDialog] = React.useState<DialogState>({ kind: "closed" });
   const [runOpen, setRunOpen] = React.useState(false);
@@ -126,7 +129,7 @@ export default function TeamPage() {
           { label: "Members", value: members.length, hint: ready ? "loaded locally" : "loading" },
           { label: "Scheduled", value: scheduled, hint: "recurring rules" },
           { label: "Due now", value: dueNow, tone: dueNow > 0 ? "warning" : "default" },
-          { label: "Cluster", value: solanaConfig.cluster, tone: solanaConfig.cluster === "devnet" ? "warning" : "default" },
+          { label: "Cluster", value: cluster, tone: cluster === "devnet" ? "warning" : "default" },
         ]}
       >
         <div className="grid gap-4">
@@ -296,7 +299,8 @@ function MemberDialog({
   existing: TeamMember[];
   onClose: () => void;
 }) {
-  const formKey = `${mode}:${member?.id ?? "new"}`;
+  const { config } = useSolanaNetwork();
+  const formKey = `${config.cluster}:${mode}:${member?.id ?? "new"}`;
   return (
     <Dialog open={open} onOpenChange={(value) => (value ? null : onClose())}>
       <DialogContent className="sm:max-w-2xl">
@@ -350,10 +354,12 @@ function MemberForm({
   existing: TeamMember[];
   onClose: () => void;
 }) {
-  const [draft, setDraft] = React.useState<TeamMemberDraft>(() => initialDraft(member));
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
+  const [draft, setDraft] = React.useState<TeamMemberDraft>(() => initialDraft(member, cluster));
   const [errors, setErrors] = React.useState<MemberDraftErrors>({});
   const [schedule, setScheduleState] = React.useState<ScheduleFormState>(() =>
-    initialSchedule(member, draft),
+    initialSchedule(member, draft, cluster),
   );
   const [scheduleErrors, setScheduleErrors] = React.useState<ScheduleDraftErrors>({});
   const [submitted, setSubmitted] = React.useState(false);
@@ -362,7 +368,7 @@ function MemberForm({
     setDraft((current) => {
       const next = { ...current, [key]: value };
       if (submitted) {
-        setErrors(validateMemberDraft(next, { existing, editingId: member?.id }));
+        setErrors(validateMemberDraft(next, { cluster, existing, editingId: member?.id }));
       }
       return next;
     });
@@ -380,14 +386,17 @@ function MemberForm({
   }
 
   function validateSchedule(value: ScheduleFormState) {
-    const errs = validateScheduleDraft({
-      cadence: value.cadence,
-      dayOfCycle: value.dayOfCycle,
-      amount: value.amount,
-      mint: mintForTokenId(value.tokenId),
-      intervalSec: value.intervalSec,
-      runsRemaining: value.runsRemaining,
-    });
+    const errs = validateScheduleDraft(
+      {
+        cadence: value.cadence,
+        dayOfCycle: value.dayOfCycle,
+        amount: value.amount,
+        mint: mintForTokenId(value.tokenId, cluster),
+        intervalSec: value.intervalSec,
+        runsRemaining: value.runsRemaining,
+      },
+      cluster,
+    );
     setScheduleErrors(errs);
     return errs;
   }
@@ -396,6 +405,7 @@ function MemberForm({
     e.preventDefault();
     setSubmitted(true);
     const memberErrors = validateMemberDraft(draft, {
+      cluster,
       existing,
       editingId: member?.id,
     });
@@ -406,19 +416,19 @@ function MemberForm({
 
     let memberId: string | undefined;
     if (mode === "add") {
-      memberId = addMember(solanaConfig.cluster, draft).id;
+      memberId = addMember(cluster, draft).id;
     } else if (member) {
       memberId = member.id;
-      updateMember(solanaConfig.cluster, member.id, draft);
+      updateMember(cluster, member.id, draft);
     }
 
     if (memberId) {
       if (schedule.on) {
-        setSchedule(solanaConfig.cluster, memberId, {
+        setSchedule(cluster, memberId, {
           cadence: schedule.cadence,
           dayOfCycle: schedule.dayOfCycle,
           amount: schedule.amount,
-          mint: mintForTokenId(schedule.tokenId),
+          mint: mintForTokenId(schedule.tokenId, cluster),
           ...(schedule.cadence === "test"
             ? {
                 intervalSec: schedule.intervalSec,
@@ -427,7 +437,7 @@ function MemberForm({
             : null),
         });
       } else if (member?.schedule) {
-        clearSchedule(solanaConfig.cluster, memberId);
+        clearSchedule(cluster, memberId);
       }
     }
 
@@ -525,6 +535,9 @@ function ScheduleEditor({
     value: ScheduleFormState[K],
   ) => void;
 }) {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
+
   function onCadenceChange(next: ScheduleCadence) {
     onSetField("cadence", next);
     onSetField("dayOfCycle", defaultDayForCadence(next));
@@ -545,7 +558,7 @@ function ScheduleEditor({
                   cadence: state.cadence,
                   dayOfCycle: state.dayOfCycle,
                   amount: state.amount,
-                  mint: mintForTokenId(state.tokenId),
+                  mint: mintForTokenId(state.tokenId, cluster),
                   intervalSec: state.intervalSec,
                   runsRemaining: state.runsRemaining,
                 })
@@ -705,17 +718,19 @@ function TokenPicker({
   value: ShieldTokenId;
   onChange: (id: ShieldTokenId) => void;
 }) {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
   return (
     <div className="grid grid-cols-3 gap-1 rounded-lg border border-border/70 bg-secondary/30 p-1">
       {TOKEN_OPTIONS.map((token) => {
         const active = value === token.id;
-        const supported = isShieldTokenSupported(token.id);
+        const supported = isShieldTokenSupported(token.id, cluster);
         return (
           <button
             key={token.id}
             type="button"
             disabled={!supported}
-            title={supported ? token.label : `${token.label} unavailable on ${solanaConfig.cluster}`}
+            title={supported ? token.label : `${token.label} unavailable on ${cluster}`}
             onClick={() => onChange(token.id)}
             className={cn(
               "flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
@@ -740,6 +755,9 @@ function DeleteDialog({
   member?: TeamMember;
   onClose: () => void;
 }) {
+  const { config } = useSolanaNetwork();
+  const cluster = config.cluster;
+
   return (
     <Dialog open={open} onOpenChange={(value) => (value ? null : onClose())}>
       <DialogContent>
@@ -755,7 +773,7 @@ function DeleteDialog({
             type="button"
             variant="destructive"
             onClick={() => {
-              if (member) deleteMember(solanaConfig.cluster, member.id);
+              if (member) deleteMember(cluster, member.id);
               onClose();
             }}
           >
@@ -780,8 +798,8 @@ function TokenIcon({ id, className }: { id: ShieldTokenId; className?: string })
   }
 }
 
-function mintForTokenId(id: ShieldTokenId): string {
-  return getShieldToken(id)?.mint.toBase58() ?? "";
+function mintForTokenId(id: ShieldTokenId, cluster: SolanaCluster): string {
+  return getShieldToken(id, cluster)?.mint.toBase58() ?? "";
 }
 
 function defaultDayForCadence(cadence: ScheduleCadence): number {
@@ -795,9 +813,10 @@ function defaultDayForCadence(cadence: ScheduleCadence): number {
 function initialSchedule(
   member: TeamMember | undefined,
   draft: TeamMemberDraft,
+  cluster: SolanaCluster,
 ): ScheduleFormState {
   if (member?.schedule) {
-    const token = getShieldTokenByMint(member.schedule.mint);
+    const token = getShieldTokenByMint(member.schedule.mint, cluster);
     return {
       on: true,
       cadence: member.schedule.cadence,
@@ -819,13 +838,13 @@ function initialSchedule(
   };
 }
 
-function defaultToken(): ShieldTokenId {
-  if (isShieldTokenSupported("USDC")) return "USDC";
-  if (isShieldTokenSupported("USDT")) return "USDT";
+function defaultToken(cluster: SolanaCluster): ShieldTokenId {
+  if (isShieldTokenSupported("USDC", cluster)) return "USDC";
+  if (isShieldTokenSupported("USDT", cluster)) return "USDT";
   return "SOL";
 }
 
-function initialDraft(member?: TeamMember): TeamMemberDraft {
+function initialDraft(member: TeamMember | undefined, cluster: SolanaCluster): TeamMemberDraft {
   if (member) {
     return {
       name: member.name,
@@ -838,7 +857,7 @@ function initialDraft(member?: TeamMember): TeamMemberDraft {
   return {
     name: "",
     wallet: "",
-    token: defaultToken(),
+    token: defaultToken(cluster),
     amount: "",
     note: "",
   };
