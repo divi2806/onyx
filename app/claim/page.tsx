@@ -18,11 +18,11 @@ import { ConnectButton } from "@/components/solana/connect-button";
 import { FancyButton } from "@/components/ui/fancy-button";
 import { InlineNotice, WorkbenchPanel } from "@/components/ui/workbench";
 import { applyBufferPolyfill } from "@/lib/buffer-polyfill";
-import { cloakConfig } from "@/lib/cloak/config";
 import { fastSendOnce } from "@/lib/cloak/fast-send-core";
 import { decodeClaimPayload } from "@/lib/cloak/invoice";
 import { createMemoizedSignMessage } from "@/lib/cloak/sign-message-cache";
 import { getShieldToken, toBaseUnits } from "@/lib/cloak/tokens";
+import { useSolanaNetwork } from "@/lib/solana/network";
 
 type PayState = "idle" | "paying" | "success" | "error";
 
@@ -30,10 +30,12 @@ function ClaimPageInner() {
   const params = useSearchParams();
   const { connection } = useConnection();
   const { publicKey, signTransaction, signMessage } = useWallet();
+  const { cloakConfig, config, switchCluster } = useSolanaNetwork();
 
   const vParam = params.get("v") ?? "";
   const payload = React.useMemo(() => decodeClaimPayload(vParam), [vParam]);
-  const token = payload ? getShieldToken(payload.s) : null;
+  const claimCluster = payload?.c ?? config.cluster;
+  const token = payload ? getShieldToken(payload.s, claimCluster) : null;
   const [mountedAt] = React.useState(() => Date.now());
   const expired = !!payload?.exp && payload.exp < mountedAt;
 
@@ -45,6 +47,14 @@ function ClaimPageInner() {
     fn: ((msg: Uint8Array) => Promise<Uint8Array>) | null;
     key: string;
   }>({ fn: null, key: "" });
+
+  React.useEffect(() => {
+    if (payload?.c && payload.c !== config.cluster) {
+      if (payload.c === "devnet" || payload.c === "mainnet-beta") {
+        switchCluster(payload.c);
+      }
+    }
+  }, [config.cluster, payload?.c, switchCluster]);
 
   async function handlePay() {
     if (!payload || expired || !publicKey || !signTransaction || !signMessage || !token) return;
