@@ -9,6 +9,7 @@ import {
   type AuditCapabilityScope,
   type AuditRedactionMode,
   type AuditRole,
+  type AuditSentEntry,
 } from "@/lib/cloak/audit-capability-types";
 import type { SolanaCluster } from "@/lib/solana/config";
 
@@ -25,6 +26,7 @@ type AuditCapabilityPayload = {
   scope: AuditCapabilityScope;
   issuedAt: number;
   expiresAt: number;
+  sent?: AuditSentEntry[];
 };
 
 type TokenEnvelope = {
@@ -43,6 +45,7 @@ type IssueAuditTokenInput = {
   dateFrom: string;
   dateTo: string;
   expiresAt: number;
+  sent?: AuditSentEntry[];
 };
 
 type AuditStore = {
@@ -99,6 +102,7 @@ export function issueAuditToken(input: IssueAuditTokenInput): {
     },
     issuedAt,
     expiresAt: input.expiresAt,
+    sent: sanitizeSentEntries(input.sent, afterTimestamp, beforeTimestamp),
   };
 
   const token = encryptPayload(payload);
@@ -174,6 +178,65 @@ export function redactComplianceReport(
   };
 }
 
+export function mergeSentEntriesIntoReport(
+  report: ComplianceReport,
+  sent: AuditSentEntry[] | undefined,
+): ComplianceReport {
+  if (!sent?.length) return report;
+
+  const sentDepositSigs = new Set(sent.map((entry) => entry.depositSignature));
+  const dedupedScanRows = report.transactions.filter(
+    (tx) =>
+      !(
+        tx.txType === "deposit" &&
+        tx.signature &&
+        sentDepositSigs.has(tx.signature)
+      ),
+  );
+  const seen = new Set<string>();
+  for (const tx of dedupedScanRows) {
+    const key = tx.signature ?? tx.commitment;
+    if (key) seen.add(key);
+  }
+
+  const sentRows = sent
+    .map(sentEntryToTransaction)
+    .filter((tx) => {
+      const key = tx.signature ?? tx.commitment;
+      return key ? !seen.has(key) : true;
+    });
+
+  const transactions = [...sentRows, ...dedupedScanRows].sort(
+    (a, b) => b.timestamp - a.timestamp,
+  );
+
+  let totalDeposits = 0;
+  let totalWithdrawals = 0;
+  let totalFees = 0;
+  for (const tx of transactions) {
+    if (tx.txType === "deposit") {
+      totalDeposits += tx.amount;
+    } else {
+      totalWithdrawals += tx.amount;
+      totalFees += tx.fee;
+    }
+  }
+
+  return {
+    ...report,
+    transactions,
+    summary: {
+      ...report.summary,
+      totalDeposits,
+      totalWithdrawals,
+      totalFees,
+      netChange: totalDeposits - totalWithdrawals,
+      transactionCount: transactions.length,
+      finalBalance: totalDeposits - totalWithdrawals,
+    },
+  };
+}
+
 function toPublicCapability(payload: AuditCapabilityPayload): AuditCapabilityPublic {
   return {
     tokenId: payload.tokenId,
@@ -228,6 +291,45 @@ function decryptToken(token: string): AuditCapabilityPayload {
   return payload;
 }
 
+function sanitizeSentEntries(
+  entries: AuditSentEntry[] | undefined,
+  afterTimestamp: number,
+  beforeTimestamp: number,
+): AuditSentEntry[] | undefined {
+  const valid = entries
+    ?.filter(isAuditSentEntry)
+    .filter((entry) => entry.timestamp >= afterTimestamp && entry.timestamp <= beforeTimestamp)
+    .slice(0, 100);
+  return valid?.length ? valid : undefined;
+}
+
+function sentEntryToTransaction(entry: AuditSentEntry): ComplianceReport["transactions"][number] {
+  const amount = rawToNumber(entry.amountRaw);
+  const netAmount = rawToNumber(entry.netRaw);
+  return {
+    txType: entry.source === "payroll" ? "payroll" : "withdraw",
+    amount,
+    fee: Math.max(0, amount - netAmount),
+    netAmount,
+    runningBalance: 0,
+    timestamp: entry.timestamp,
+    recipient: entry.recipient,
+    commitment: `sent-${entry.id}`,
+    signature: entry.withdrawSignature,
+    mint: entry.mint,
+    decimals: entry.decimals,
+    symbol: entry.symbol,
+  };
+}
+
+function rawToNumber(raw: string): number {
+  try {
+    return Number(BigInt(raw));
+  } catch {
+    return 0;
+  }
+}
+
 function tokenKey(): Buffer {
   const secret =
     process.env.ONYX_AUDIT_TOKEN_SECRET ??
@@ -266,6 +368,29 @@ function isPayload(value: AuditCapabilityPayload): boolean {
     value.nkHex.length === 64 &&
     typeof value.scope?.afterTimestamp === "number" &&
     typeof value.scope?.beforeTimestamp === "number" &&
-    typeof value.expiresAt === "number"
+    typeof value.expiresAt === "number" &&
+    (value.sent === undefined ||
+      (Array.isArray(value.sent) && value.sent.every(isAuditSentEntry)))
+  );
+}
+
+function isAuditSentEntry(value: unknown): value is AuditSentEntry {
+  if (!value || typeof value !== "object") return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.id === "string" &&
+    typeof r.recipient === "string" &&
+    typeof r.mint === "string" &&
+    typeof r.symbol === "string" &&
+    typeof r.decimals === "number" &&
+    typeof r.amountRaw === "string" &&
+    typeof r.netRaw === "string" &&
+    typeof r.depositSignature === "string" &&
+    typeof r.withdrawSignature === "string" &&
+    typeof r.timestamp === "number" &&
+    (r.source === undefined ||
+      r.source === "pay" ||
+      r.source === "payroll" ||
+      r.source === "recurring")
   );
 }
