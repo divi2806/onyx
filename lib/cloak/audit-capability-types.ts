@@ -17,6 +17,20 @@ export type AuditCapabilityScope = {
   beforeTimestamp: number;
 };
 
+export type AuditSentEntry = {
+  id: string;
+  recipient: string;
+  mint: string;
+  symbol: string;
+  decimals: number;
+  amountRaw: string;
+  netRaw: string;
+  depositSignature: string;
+  withdrawSignature: string;
+  timestamp: number;
+  source?: "pay" | "payroll" | "recurring";
+};
+
 export type AuditCapabilityPublic = {
   tokenId: string;
   auditor: string;
