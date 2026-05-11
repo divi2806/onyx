@@ -30,11 +30,13 @@ import { useViewingKeys } from "@/lib/cloak/use-viewing-keys";
 import {
   AUDIT_REDACTION_MODES,
   AUDIT_ROLES,
+  type AuditSentEntry,
   type AuditAccessLog,
   type AuditCapabilityPublic,
   type AuditRedactionMode,
   type AuditRole,
 } from "@/lib/cloak/audit-capability-types";
+import { usePaymentHistory } from "@/lib/cloak/use-payment-history";
 import {
   addViewingKey,
   encodeViewingKeyToken,
@@ -52,6 +54,7 @@ export default function AuditAccessPage() {
   const { cloakConfig, config } = useSolanaNetwork();
   const cluster = config.cluster;
   const viewingKeys = useViewingKeys();
+  const { records: paymentRecords } = usePaymentHistory();
 
   const [auditor, setAuditor] = React.useState("");
   const [dateFrom, setDateFrom] = React.useState("");
@@ -175,6 +178,7 @@ export default function AuditAccessPage() {
         dateTo,
         expiresInDays: expiryDays,
         cluster,
+        sent: buildAuditSentEntries(paymentRecords, dateFrom, dateTo),
       });
 
       const key = addViewingKey(cluster, publicKey.toBase58(), {
@@ -222,11 +226,7 @@ export default function AuditAccessPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: key.token }),
         });
-        if (!res.ok) {
-          const body = (await res.json()) as { error?: string };
-          throw new Error(body.error ?? `Scan failed (${res.status})`);
-        }
-        const body = (await res.json()) as { csv: string };
+        const body = await readApiJson<{ csv: string }>(res, "Audit export failed");
         csv = body.csv;
       } else {
         const afterTimestamp = new Date(key.dateFrom).getTime();
@@ -242,11 +242,7 @@ export default function AuditAccessPage() {
             beforeTimestamp,
           }),
         });
-        if (!res.ok) {
-          const body = (await res.json()) as { error?: string };
-          throw new Error(body.error ?? `Scan failed (${res.status})`);
-        }
-        const { report } = (await res.json()) as { report: unknown };
+        const { report } = await readApiJson<{ report: unknown }>(res, "Audit export failed");
         const { formatComplianceCsv } = await import("@cloak.dev/sdk");
         csv = formatComplianceCsv(report as Parameters<typeof formatComplianceCsv>[0]);
       }
@@ -534,6 +530,7 @@ async function issueAuditCapability(input: {
   dateTo: string;
   expiresInDays: number;
   cluster: SolanaCluster;
+  sent?: AuditSentEntry[];
 }): Promise<{ token: string; capability: AuditCapabilityPublic }> {
   const res = await fetch("/api/audit/issue", {
     method: "POST",
@@ -549,6 +546,81 @@ async function issueAuditCapability(input: {
     throw new Error(body.error ?? `Token issue failed (${res.status})`);
   }
   return { token: body.token, capability: body.capability };
+}
+
+async function readApiJson<T>(res: Response, fallback: string): Promise<T> {
+  const text = await res.text();
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+  }
+
+  if (!res.ok) {
+    const error = isApiError(body) ? body.error : summarizeText(text);
+    throw new Error(error || `${fallback} (${res.status})`);
+  }
+  if (!body) {
+    throw new Error(`${fallback}: server returned an empty or non-JSON response.`);
+  }
+  return body as T;
+}
+
+function isApiError(value: unknown): value is { error: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "error" in value &&
+    typeof (value as { error?: unknown }).error === "string"
+  );
+}
+
+function summarizeText(text: string): string {
+  return text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function buildAuditSentEntries(
+  records: {
+    id: string;
+    recipient: string;
+    mint: string;
+    token: string;
+    decimals: number;
+    amountRaw: string;
+    netRaw: string;
+    depositSignature: string;
+    withdrawSignature: string;
+    timestamp: number;
+    source?: "pay" | "payroll" | "recurring";
+  }[],
+  dateFrom: string,
+  dateTo: string,
+): AuditSentEntry[] | undefined {
+  const from = Date.parse(dateFrom);
+  const to = Date.parse(dateTo) + 86_400_000 - 1;
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return undefined;
+
+  const sent = records
+    .filter((record) => record.timestamp >= from && record.timestamp <= to)
+    .slice(0, 100)
+    .map((record) => ({
+      id: record.id,
+      recipient: record.recipient,
+      mint: record.mint,
+      symbol: record.token,
+      decimals: record.decimals,
+      amountRaw: record.amountRaw,
+      netRaw: record.netRaw,
+      depositSignature: record.depositSignature,
+      withdrawSignature: record.withdrawSignature,
+      timestamp: record.timestamp,
+      source: record.source,
+    }));
+
+  return sent.length ? sent : undefined;
 }
 
 function IconButton({
