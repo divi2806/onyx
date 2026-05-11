@@ -6,6 +6,7 @@ import {
   AUDIT_ROLES,
   type AuditRedactionMode,
   type AuditRole,
+  type AuditSentEntry,
 } from "@/lib/cloak/audit-capability-types";
 import { issueAuditToken } from "@/lib/cloak/audit-capability-server";
 import { solanaConfig, type SolanaCluster } from "@/lib/solana/config";
@@ -24,6 +25,7 @@ type IssueBody = {
   dateTo?: unknown;
   expiresInDays?: unknown;
   cluster?: unknown;
+  sent?: unknown;
 };
 
 export async function POST(req: Request) {
@@ -43,6 +45,7 @@ export async function POST(req: Request) {
     const dateTo = requireDate(body.dateTo, "dateTo");
     const role = parseRole(body.role);
     const redaction = parseRedaction(body.redaction);
+    const sent = parseSentEntries(body.sent);
     const expiresInDays =
       typeof body.expiresInDays === "number"
         ? Math.max(1, Math.min(365, Math.floor(body.expiresInDays)))
@@ -60,6 +63,7 @@ export async function POST(req: Request) {
       dateFrom,
       dateTo,
       expiresAt: Date.now() + expiresInDays * 86_400_000,
+      sent,
     });
 
     return NextResponse.json({ token, capability });
@@ -115,4 +119,31 @@ function parseRedaction(value: unknown): AuditRedactionMode {
   return AUDIT_REDACTION_MODES.some((mode) => mode.id === value)
     ? (value as AuditRedactionMode)
     : "full";
+}
+
+function parseSentEntries(value: unknown): AuditSentEntry[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const entries = value.filter(isAuditSentEntry).slice(0, 100);
+  return entries.length ? entries : undefined;
+}
+
+function isAuditSentEntry(value: unknown): value is AuditSentEntry {
+  if (!value || typeof value !== "object") return false;
+  const r = value as Record<string, unknown>;
+  return (
+    typeof r.id === "string" &&
+    typeof r.recipient === "string" &&
+    typeof r.mint === "string" &&
+    typeof r.symbol === "string" &&
+    typeof r.decimals === "number" &&
+    typeof r.amountRaw === "string" &&
+    typeof r.netRaw === "string" &&
+    typeof r.depositSignature === "string" &&
+    typeof r.withdrawSignature === "string" &&
+    typeof r.timestamp === "number" &&
+    (r.source === undefined ||
+      r.source === "pay" ||
+      r.source === "payroll" ||
+      r.source === "recurring")
+  );
 }
