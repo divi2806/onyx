@@ -63,7 +63,7 @@ export default function AuditPage() {
   React.useEffect(() => {
     const trimmed = token.trim();
     const timer = window.setTimeout(() => {
-      if (!trimmed.startsWith("onyx_audit_v2.")) {
+      if (!isCompleteAuditToken(trimmed)) {
         setCapability(null);
         return;
       }
@@ -74,7 +74,7 @@ export default function AuditPage() {
 
   async function handleScan() {
     const trimmed = token.trim();
-    if (!trimmed.startsWith("onyx_audit_v2.")) {
+    if (!isCompleteAuditToken(trimmed)) {
       setError("Paste a server-issued Onyx audit access token from the Audit Access page.");
       setState("error");
       return;
@@ -93,11 +93,7 @@ export default function AuditPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token: trimmed }),
       });
-      if (!res.ok) {
-        const body = (await res.json()) as { error?: string };
-        throw new Error(body.error ?? `Scan failed (${res.status})`);
-      }
-      const body = (await res.json()) as {
+      const body = await readApiJson<{
         capability: AuditCapabilityPublic;
         csv: string;
         report: {
@@ -108,7 +104,7 @@ export default function AuditPage() {
             totalFees: number;
           };
         };
-      };
+      }>(res, "Audit scan failed");
       const scannedCapability = body.capability;
       const report = body.report;
 
@@ -117,7 +113,7 @@ export default function AuditPage() {
         .filter((tx) => tx.txType === "deposit")
         .reduce((sum, tx) => sum + tx.amount, 0);
       const totalWithdrawals = txs
-        .filter((tx) => tx.txType === "withdraw")
+        .filter((tx) => tx.txType !== "deposit")
         .reduce((sum, tx) => sum + tx.amount, 0);
       const totalFees = txs.reduce((sum, tx) => sum + tx.fee, 0);
 
@@ -234,7 +230,7 @@ export default function AuditPage() {
               <p>No wallet connection is required.</p>
               <p>Paste the audit access token shared by the wallet owner.</p>
               <p>The server decrypts the token, enforces wallet, date, expiry, and redaction scope, then scans Cloak.</p>
-              <p>CSV export uses only the scoped report returned by the scan endpoint.</p>
+              <p>Outbound sent rows included by the owner are merged with the chain scan before CSV export.</p>
             </div>
           </WorkbenchPanel>
         </aside>
@@ -252,6 +248,44 @@ async function inspectToken(token: string): Promise<AuditCapabilityPublic | null
   if (!res.ok) return null;
   const body = (await res.json()) as { capability?: AuditCapabilityPublic };
   return body.capability ?? null;
+}
+
+async function readApiJson<T>(res: Response, fallback: string): Promise<T> {
+  const text = await res.text();
+  let body: unknown = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = null;
+    }
+  }
+
+  if (!res.ok) {
+    const error = isApiError(body) ? body.error : summarizeText(text);
+    throw new Error(error || `${fallback} (${res.status})`);
+  }
+  if (!body) {
+    throw new Error(`${fallback}: server returned an empty or non-JSON response.`);
+  }
+  return body as T;
+}
+
+function isApiError(value: unknown): value is { error: string } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "error" in value &&
+    typeof (value as { error?: unknown }).error === "string"
+  );
+}
+
+function summarizeText(text: string): string {
+  return text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 240);
+}
+
+function isCompleteAuditToken(value: string): boolean {
+  return /^onyx_audit_v2\.[A-Za-z0-9_-]{80,}$/.test(value);
 }
 
 function Results({
