@@ -7,11 +7,18 @@ import { defaultRpcUrlFor, solanaConfig, type SolanaCluster } from "@/lib/solana
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const LIMIT_DEFAULT = 100;
+const LIMIT_MAX = 1000;
+const BATCH_SIZE = 5;
+const SCAN_TIMEOUT_MS = 45_000;
 
 type ScanRequest = {
   wallet?: unknown;
   cluster?: unknown;
   untilSignature?: unknown;
+  limit?: unknown;
   // Hex-encoded 32-byte nsk from deriveNk(). Falls back to zeroed bytes
   // (ATA-matching only) when absent.
   viewingKeyNk?: unknown;
@@ -66,27 +73,38 @@ export async function POST(req: Request) {
 
   const cloakConfig = getCloakConfig(cluster);
   const rpcUrl = scanRpcUrl(cluster);
+  const rpcHost = safeHost(rpcUrl);
   const connection = new Connection(rpcUrl, "confirmed");
+  const limit = scanLimit(body.limit);
+  const startedAt = Date.now();
 
   try {
-    const result = await scanTransactions({
-      connection,
-      programId: cloakConfig.programId,
-      viewingKeyNk,
-      walletPublicKey: walletPk.toBase58(),
-      untilSignature,
-      afterTimestamp,
-      beforeTimestamp,
-      // Default 50 fires 50 parallel getTransaction calls, tripping Helius
-      // free-tier (~10 RPS). 5 keeps us under without hammering retries.
-      batchSize: 5,
-    });
+    const result = await withTimeout(
+      scanTransactions({
+        connection,
+        programId: cloakConfig.programId,
+        viewingKeyNk,
+        walletPublicKey: walletPk.toBase58(),
+        untilSignature,
+        afterTimestamp,
+        beforeTimestamp,
+        limit,
+        batchSize: BATCH_SIZE,
+      }),
+      SCAN_TIMEOUT_MS,
+    );
     const report = toComplianceReport(result);
+    console.log(
+      `[scan-received] ok cluster=${cluster} host=${rpcHost} wallet=${walletPk.toBase58().slice(0, 6)}... limit=${limit} txs=${report.transactions.length} rpc=${report.rpcCallsMade} elapsed=${Date.now() - startedAt}ms`,
+    );
     return NextResponse.json({ report });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[scan-received] error:", message);
-    return NextResponse.json({ error: message }, { status: 500 });
+    const message = scanErrorMessage(err);
+    const status = message === "scan-timeout" ? 504 : 500;
+    console.error(
+      `[scan-received] err cluster=${cluster} host=${rpcHost} wallet=${walletPk.toBase58().slice(0, 6)}... status=${status} elapsed=${Date.now() - startedAt}ms - ${message}`,
+    );
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -96,6 +114,13 @@ function parseCluster(value: unknown): SolanaCluster {
 }
 
 function scanRpcUrl(cluster: SolanaCluster): string {
+  const clusterRpc =
+    cluster === "mainnet-beta"
+      ? process.env.CLOAK_SCAN_RPC_URL_MAINNET
+      : cluster === "devnet"
+        ? process.env.CLOAK_SCAN_RPC_URL_DEVNET
+        : undefined;
+  if (clusterRpc) return clusterRpc;
   if (cluster === solanaConfig.cluster) {
     return (
       process.env.CLOAK_SCAN_RPC_URL ??
@@ -104,4 +129,47 @@ function scanRpcUrl(cluster: SolanaCluster): string {
     );
   }
   return defaultRpcUrlFor(cluster);
+}
+
+function scanLimit(raw: unknown): number {
+  const fromBody = typeof raw === "number" ? raw : Number.NaN;
+  const fromEnv = Number.parseInt(process.env.CLOAK_SCAN_LIMIT ?? "", 10);
+  const value = Number.isFinite(fromBody) ? fromBody : fromEnv;
+  if (!Number.isFinite(value) || value <= 0) return LIMIT_DEFAULT;
+  return Math.min(LIMIT_MAX, Math.floor(value));
+}
+
+function scanErrorMessage(err: unknown): string {
+  const message = err instanceof Error ? err.message : String(err);
+  if (message === "scan-timeout") {
+    return "scan-timeout";
+  }
+  if (/429|too many requests|rate.?limit/i.test(message)) {
+    return "Solana RPC rate limit hit while scanning. Use a dedicated CLOAK_SCAN_RPC_URL_DEVNET/CLOAK_SCAN_RPC_URL_MAINNET RPC or try again with fewer recent transactions.";
+  }
+  return message || "Scan failed.";
+}
+
+function safeHost(rpcUrl: string): string {
+  try {
+    return new URL(rpcUrl).host;
+  } catch {
+    return "unknown";
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const handle = setTimeout(() => reject(new Error("scan-timeout")), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(handle);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(handle);
+        reject(err);
+      },
+    );
+  });
 }
