@@ -381,6 +381,7 @@ export default function AuditAccessPage() {
               <InlineNotice
                 tone="success"
                 title="Audit access token ready"
+                className="overflow-hidden"
                 action={
                   <Button type="button" variant="outline" onClick={() => handleCopy(lastToken, "new")}>
                     <HugeiconsIcon icon={copied === "new" ? CheckmarkCircle01Icon : Copy01Icon} size={14} strokeWidth={2} aria-hidden="true" />
@@ -391,7 +392,7 @@ export default function AuditAccessPage() {
                 <p className="mb-2 text-sm text-muted-foreground">
                   Copy this token and send it to the auditor. They paste it in the audit portal to scan only this approved scope.
                 </p>
-                <code className="block truncate font-mono text-xs text-foreground">{lastToken}</code>
+                <code className="block max-w-full break-all rounded-md border border-emerald-500/15 bg-background/50 px-3 py-2 font-mono text-xs leading-5 text-foreground [overflow-wrap:anywhere]">{lastToken}</code>
               </InlineNotice>
             ) : null}
 
